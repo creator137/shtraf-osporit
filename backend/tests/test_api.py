@@ -35,6 +35,20 @@ async def test_health(api_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_delete_is_allowed_by_cors(api_client: AsyncClient) -> None:
+    response = await api_client.options(
+        "/admin/cases/3",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "DELETE",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-methods"] == "GET, PATCH, DELETE"
+
+
+@pytest.mark.asyncio
 async def test_list_users(api_client: AsyncClient, db_session: AsyncSession) -> None:
     user = await UserService(db_session).get_or_create(
         200_000_001, "admin_test", "Test", "User"
