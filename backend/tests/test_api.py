@@ -1,11 +1,13 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.api.admin as admin_api
 from app.db.models import CaseStatus
 from app.api.admin import get_session
 from app.api.main import app
+from app.db.models import Document
 from app.services.case_service import CaseService
 from app.services.document_service import DocumentService
 from app.services.user_service import UserService
@@ -109,6 +111,38 @@ async def test_update_case_status(api_client: AsyncClient, db_session: AsyncSess
 
     assert response.status_code == 200
     assert response.json()["status"] == CaseStatus.IN_PROGRESS.value
+
+
+@pytest.mark.asyncio
+async def test_delete_case_removes_case_documents(
+    api_client: AsyncClient, db_session: AsyncSession, tmp_path
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        200_000_006, None, "Delete", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+    relative_path = "storage/cases/delete/document.pdf"
+    file_path = tmp_path / relative_path
+    file_path.parent.mkdir(parents=True)
+    file_path.write_bytes(b"delete me")
+    document = await DocumentService(db_session).create(
+        case=case,
+        telegram_file_id="delete-file",
+        original_filename="document.pdf",
+        mime_type="application/pdf",
+        local_path=relative_path,
+    )
+    original_root = admin_api.BACKEND_ROOT
+    admin_api.BACKEND_ROOT = tmp_path
+    try:
+        response = await api_client.delete(f"/admin/cases/{case.id}")
+    finally:
+        admin_api.BACKEND_ROOT = original_root
+
+    assert response.status_code == 204
+    assert not file_path.exists()
+    assert await db_session.scalar(select(Document).where(Document.id == document.id)) is None
+    assert (await api_client.get(f"/admin/cases/{case.id}")).status_code == 404
 
 
 @pytest.mark.asyncio

@@ -55,6 +55,10 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     )
   }
 
+  if (response.status === 204) {
+    return undefined as T
+  }
+
   return response.json() as Promise<T>
 }
 
@@ -79,6 +83,10 @@ export function updateCaseStatus(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   })
+}
+
+export function deleteCase(caseId: number): Promise<void> {
+  return request(`/admin/cases/${caseId}`, { method: "DELETE" })
 }
 
 export function getDocumentFileUrl(documentId: number): string {

@@ -180,6 +180,31 @@ async def update_case_status(
     return await get_case(case_id, session)
 
 
+@router.delete("/cases/{case_id}", status_code=204)
+async def delete_case(
+    case_id: int, session: AsyncSession = Depends(get_session)
+) -> Response:
+    case = await session.scalar(
+        select(Case)
+        .where(Case.id == case_id)
+        .options(selectinload(Case.documents))
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    storage_root = (BACKEND_ROOT / "storage").resolve()
+    for document in case.documents:
+        if not document.local_path:
+            continue
+        file_path = (BACKEND_ROOT / document.local_path).resolve()
+        if storage_root in file_path.parents:
+            file_path.unlink(missing_ok=True)
+
+    await session.delete(case)
+    await session.commit()
+    return Response(status_code=204)
+
+
 @router.get("/documents/{document_id}/file", response_model=None)
 async def get_document_file(
     document_id: int, session: AsyncSession = Depends(get_session)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
-import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon } from "lucide-react"
-import { Link, useParams } from "react-router-dom"
+import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon, Trash2Icon } from "lucide-react"
+import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState, ErrorState } from "@/components/data-feedback"
 import { StatusBadge } from "@/components/status-badge"
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/table"
 import { useApiResource } from "@/hooks/use-api-resource"
 import {
+  deleteCase,
   getCase,
   getDocumentFileUrl,
   updateCaseStatus,
@@ -67,12 +68,15 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
 
 export function CaseDetailPage() {
   const { caseId = "" } = useParams()
+  const navigate = useNavigate()
   const numericCaseId = Number(caseId)
   const loadCase = useCallback(() => getCase(numericCaseId), [numericCaseId])
   const { data: item, error, loading, retry } = useApiResource(loadCase)
   const [status, setStatus] = useState<CaseStatus | null>(null)
   const [statusError, setStatusError] = useState<string | null>(null)
   const [statusSaving, setStatusSaving] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (item) setStatus(item.status)
@@ -97,6 +101,23 @@ export function CaseDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!window.confirm(`Удалить дело №${caseId} и все его документы?`)) return
+
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      await deleteCase(numericCaseId)
+      navigate("/cases")
+    } catch (caught) {
+      setDeleteError(
+        caught instanceof Error ? caught.message : "Не удалось удалить дело."
+      )
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -106,12 +127,22 @@ export function CaseDetailPage() {
             Основная информация и загруженные документы.
           </p>
         </div>
-        <Button variant="outline" asChild>
-          <Link to="/cases">
-            <ArrowLeftIcon data-icon="inline-start" />
-            К списку дел
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="destructive"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            <Trash2Icon data-icon="inline-start" />
+            {deleting ? "Удаление..." : "Удалить дело"}
+          </Button>
+          <Button variant="outline" asChild>
+            <Link to="/cases">
+              <ArrowLeftIcon data-icon="inline-start" />
+              К списку дел
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {error ? (
@@ -234,6 +265,9 @@ export function CaseDetailPage() {
           </Card>
         </div>
       )}
+      {deleteError ? (
+        <p className="text-sm text-destructive">{deleteError}</p>
+      ) : null}
     </div>
   )
 }
