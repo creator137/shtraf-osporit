@@ -2,6 +2,8 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.api.admin as admin_api
+from app.db.models import CaseStatus
 from app.api.admin import get_session
 from app.api.main import app
 from app.services.case_service import CaseService
@@ -51,7 +53,7 @@ async def test_list_cases(api_client: AsyncClient, db_session: AsyncSession) -> 
         200_000_002, None, "Case", "Owner"
     )
     case = await CaseService(db_session).create(user.id)
-    await DocumentService(db_session).create(
+    document = await DocumentService(db_session).create(
         case=case,
         telegram_file_id="admin-list-file",
         original_filename="synthetic.pdf",
@@ -91,3 +93,47 @@ async def test_case_detail(api_client: AsyncClient, db_session: AsyncSession) ->
 
     missing = await api_client.get("/admin/cases/999999999")
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_case_status(api_client: AsyncClient, db_session: AsyncSession) -> None:
+    user = await UserService(db_session).get_or_create(
+        200_000_004, None, "Status", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+
+    response = await api_client.patch(
+        f"/admin/cases/{case.id}/status",
+        json={"status": CaseStatus.IN_PROGRESS.value},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == CaseStatus.IN_PROGRESS.value
+
+
+@pytest.mark.asyncio
+async def test_document_file(api_client: AsyncClient, db_session: AsyncSession, tmp_path) -> None:
+    user = await UserService(db_session).get_or_create(
+        200_000_005, None, "File", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+    relative_path = "storage/cases/test/document.pdf"
+    file_path = tmp_path / relative_path
+    file_path.parent.mkdir(parents=True)
+    file_path.write_bytes(b"test document")
+    document = await DocumentService(db_session).create(
+        case=case,
+        telegram_file_id="file-route-test",
+        original_filename="document.pdf",
+        mime_type="application/pdf",
+        local_path=relative_path,
+    )
+    original_root = admin_api.BACKEND_ROOT
+    admin_api.BACKEND_ROOT = tmp_path
+    try:
+        response = await api_client.get(f"/admin/documents/{document.id}/file")
+    finally:
+        admin_api.BACKEND_ROOT = original_root
+
+    assert response.status_code == 200
+    assert response.content == b"test document"

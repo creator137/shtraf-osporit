@@ -1,23 +1,15 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
-
-from app.bot.handlers import cases, documents, start
-from app.bot.middleware import DatabaseSessionMiddleware
+from app.bot.application import create_bot, create_dispatcher
 from app.config import get_settings
-from app.db.session import async_session_factory, engine
+from app.db.session import engine
 
 
 async def main() -> None:
     settings = get_settings()
-    if settings.bot_token is None:
-        raise RuntimeError("BOT_TOKEN is not configured")
-
-    bot = Bot(token=settings.bot_token.get_secret_value())
-    dispatcher = Dispatcher()
-    dispatcher.update.middleware(DatabaseSessionMiddleware(async_session_factory))
-    dispatcher.include_routers(start.router, cases.router, documents.router)
+    bot = create_bot(settings)
+    dispatcher = create_dispatcher(settings)
 
     try:
         await bot.delete_webhook(drop_pending_updates=False)
@@ -25,6 +17,7 @@ async def main() -> None:
             bot, allowed_updates=dispatcher.resolve_used_update_types()
         )
     finally:
+        await dispatcher.storage.close()
         await bot.session.close()
         await engine.dispose()
 

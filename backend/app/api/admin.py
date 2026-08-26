@@ -1,14 +1,22 @@
 from collections.abc import AsyncIterator
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.bot.application import create_bot
+from app.config import get_settings
 from app.db.models import Case, CaseStatus, Document, User
 from app.db.session import async_session_factory
+from app.services.case_service import CaseService
+from app.services.document_service import BACKEND_ROOT
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -54,6 +62,10 @@ class CaseDetail(BaseModel):
     updated_at: datetime
     user: UserSummary
     documents: list[DocumentItem]
+
+
+class CaseStatusUpdate(BaseModel):
+    status: CaseStatus
 
 
 def user_summary(user: User) -> UserSummary:
@@ -147,4 +159,63 @@ async def get_case(
             )
             for document in case.documents
         ],
+    )
+
+
+@router.patch("/cases/{case_id}/status", response_model=CaseDetail)
+async def update_case_status(
+    case_id: int,
+    payload: CaseStatusUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> CaseDetail:
+    case = await session.scalar(
+        select(Case)
+        .where(Case.id == case_id)
+        .options(selectinload(Case.user), selectinload(Case.documents))
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    await CaseService(session).update_status(case, payload.status)
+    await session.commit()
+    return await get_case(case_id, session)
+
+
+@router.get("/documents/{document_id}/file", response_model=None)
+async def get_document_file(
+    document_id: int, session: AsyncSession = Depends(get_session)
+) -> FileResponse | Response:
+    document = await session.scalar(select(Document).where(Document.id == document_id))
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if document.local_path:
+        file_path = (BACKEND_ROOT / document.local_path).resolve()
+        storage_root = (BACKEND_ROOT / "storage").resolve()
+        if storage_root in file_path.parents and file_path.is_file():
+            return FileResponse(
+                path=file_path,
+                media_type=document.mime_type or "application/octet-stream",
+                filename=document.original_filename or Path(file_path).name,
+            )
+
+    if not document.telegram_file_id:
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    bot = create_bot(get_settings())
+    destination = BytesIO()
+    try:
+        telegram_file = await bot.get_file(document.telegram_file_id)
+        if telegram_file.file_path is None:
+            raise HTTPException(status_code=404, detail="Document file not found")
+        await bot.download_file(telegram_file.file_path, destination=destination)
+    finally:
+        await bot.session.close()
+
+    filename = document.original_filename or f"document-{document.id}"
+    return Response(
+        content=destination.getvalue(),
+        media_type=document.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}"
+        },
     )

@@ -10,7 +10,7 @@ Python 3.12 backend with aiogram 3, FastAPI, async SQLAlchemy 2, PostgreSQL, Ale
    cp .env.example .env
    ```
 
-   `DATABASE_URL` must use the async driver, for example:
+   `DATABASE_URL` may use a regular PostgreSQL URL or the async driver, for example:
 
    ```text
    postgresql+asyncpg://<user>:<password>@localhost:5432/<database>

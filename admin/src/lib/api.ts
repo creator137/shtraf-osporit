@@ -1,6 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
+export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
 
-export type CaseStatus = "NEW" | "DOCUMENT_UPLOADED"
+export type CaseStatus = "DOCUMENT_UPLOADED" | "IN_PROGRESS" | "READY"
 
 export interface UserSummary {
   telegram_id: number
@@ -39,10 +39,10 @@ export interface CaseDetail {
   documents: DocumentItem[]
 }
 
-async function request<T>(path: string): Promise<T> {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${API_URL}${path}`)
+    response = await fetch(`${API_URL}${path}`, options)
   } catch {
     throw new Error("API недоступен. Проверьте, что backend запущен.")
   }
@@ -68,4 +68,19 @@ export function getCases(): Promise<CaseListItem[]> {
 
 export function getCase(caseId: number): Promise<CaseDetail> {
   return request(`/admin/cases/${caseId}`)
+}
+
+export function updateCaseStatus(
+  caseId: number,
+  status: CaseStatus
+): Promise<CaseDetail> {
+  return request(`/admin/cases/${caseId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  })
+}
+
+export function getDocumentFileUrl(documentId: number): string {
+  return `${API_URL}/admin/documents/${documentId}/file`
 }

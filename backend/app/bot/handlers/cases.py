@@ -17,8 +17,9 @@ from app.services.user_service import UserService
 
 router = Router(name="cases")
 STATUS_LABELS = {
-    CaseStatus.NEW: "Новое",
     CaseStatus.DOCUMENT_UPLOADED: "Документ загружен",
+    CaseStatus.IN_PROGRESS: "Документ в работе",
+    CaseStatus.READY: "Готов",
 }
 
 

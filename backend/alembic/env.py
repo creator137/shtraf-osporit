@@ -14,7 +14,8 @@ from app.db.models import Case, Document, User  # noqa: F401
 # access to the values within the .ini file in use.
 config = context.config
 config.set_main_option(
-    "sqlalchemy.url", str(get_settings().database_url).replace("%", "%%")
+    "sqlalchemy.url",
+    get_settings().async_database_url.replace("%", "%%"),
 )
 
 # Interpret the config file for Python logging.
@@ -71,6 +72,7 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=get_settings().database_connect_args,
     )
 
     async with connectable.connect() as connection:

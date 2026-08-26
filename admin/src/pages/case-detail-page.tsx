@@ -1,5 +1,5 @@
-import { useCallback } from "react"
-import { ArrowLeftIcon, FileTextIcon } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 
 import { EmptyState, ErrorState } from "@/components/data-feedback"
@@ -22,8 +22,20 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useApiResource } from "@/hooks/use-api-resource"
-import { getCase } from "@/lib/api"
+import {
+  getCase,
+  getDocumentFileUrl,
+  updateCaseStatus,
+  type CaseStatus,
+} from "@/lib/api"
 import { formatDate, formatName, formatUsername } from "@/lib/format"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 function DetailLoading() {
   return (
@@ -58,6 +70,32 @@ export function CaseDetailPage() {
   const numericCaseId = Number(caseId)
   const loadCase = useCallback(() => getCase(numericCaseId), [numericCaseId])
   const { data: item, error, loading, retry } = useApiResource(loadCase)
+  const [status, setStatus] = useState<CaseStatus | null>(null)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [statusSaving, setStatusSaving] = useState(false)
+
+  useEffect(() => {
+    if (item) setStatus(item.status)
+  }, [item])
+
+  async function handleStatusChange(nextStatus: string) {
+    const next = nextStatus as CaseStatus
+    setStatus(next)
+    setStatusError(null)
+    setStatusSaving(true)
+    try {
+      const updated = await updateCaseStatus(numericCaseId, next)
+      setStatus(updated.status)
+      retry()
+    } catch (caught) {
+      setStatus(item?.status ?? null)
+      setStatusError(
+        caught instanceof Error ? caught.message : "Не удалось изменить статус."
+      )
+    } finally {
+      setStatusSaving(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -90,10 +128,44 @@ export function CaseDetailPage() {
             <CardContent>
               <dl className="flex flex-col gap-3">
                 <DetailRow label="Номер дела" value={`№${item.id}`} />
-                <DetailRow label="Статус" value={<StatusBadge status={item.status} />} />
+                <DetailRow
+                  label="Статус"
+                  value={
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Select
+                        value={status ?? item.status}
+                        onValueChange={handleStatusChange}
+                        disabled={statusSaving}
+                      >
+                        <SelectTrigger className="w-52">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="DOCUMENT_UPLOADED">
+                            Документ загружен
+                          </SelectItem>
+                          <SelectItem value="IN_PROGRESS">
+                            Документ в работе
+                          </SelectItem>
+                          <SelectItem value="READY">Готов</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {statusSaving ? (
+                        <span className="text-sm text-muted-foreground">Сохранение...</span>
+                      ) : null}
+                    </div>
+                  }
+                />
+                <DetailRow
+                  label="Текущий статус"
+                  value={<StatusBadge status={status ?? item.status} />}
+                />
                 <DetailRow label="Создано" value={formatDate(item.created_at)} />
                 <DetailRow label="Обновлено" value={formatDate(item.updated_at)} />
               </dl>
+              {statusError ? (
+                <p className="mt-4 text-sm text-destructive">{statusError}</p>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -130,6 +202,7 @@ export function CaseDetailPage() {
                       <TableHead>Название</TableHead>
                       <TableHead>MIME type</TableHead>
                       <TableHead>Загружен</TableHead>
+                      <TableHead className="text-right">Действия</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -140,6 +213,18 @@ export function CaseDetailPage() {
                         </TableCell>
                         <TableCell>{document.mime_type ?? "Не указан"}</TableCell>
                         <TableCell>{formatDate(document.created_at)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" asChild>
+                            <a
+                              href={getDocumentFileUrl(document.id)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLinkIcon data-icon="inline-start" />
+                              Открыть
+                            </a>
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.main import MY_CASES_TEXT
 from app.bot.states import DocumentUpload
+from app.config import get_settings
 from app.services.case_service import CaseService
 from app.services.document_service import (
     BACKEND_ROOT,
@@ -49,19 +50,21 @@ async def _save_document(
         await message.answer("Дело не найдено. Начните заново с команды /start.")
         return
 
-    destination = build_storage_path(
-        case.id, original_filename, mime_type
-    )
-    destination.parent.mkdir(parents=True, exist_ok=True)
+    settings = get_settings()
+    destination: Path | None = None
+    local_path: str | None = None
     try:
-        await message.bot.download(telegram_file_id, destination=destination)
-        relative_path = destination.relative_to(BACKEND_ROOT).as_posix()
+        if settings.document_storage == "local":
+            destination = build_storage_path(case.id, original_filename, mime_type)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            await message.bot.download(telegram_file_id, destination=destination)
+            local_path = destination.relative_to(BACKEND_ROOT).as_posix()
         await DocumentService(session).create(
             case=case,
             telegram_file_id=telegram_file_id,
             original_filename=original_filename,
             mime_type=mime_type,
-            local_path=relative_path,
+            local_path=local_path,
         )
     except Exception:
         destination.unlink(missing_ok=True)

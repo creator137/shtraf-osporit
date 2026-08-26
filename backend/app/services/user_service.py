@@ -44,3 +44,11 @@ class UserService:
             statement, execution_options={"populate_existing": True}
         )
         return users.one()
+
+    async def update_name(
+        self, user: User, first_name: str, last_name: str | None
+    ) -> User:
+        user.first_name = first_name
+        user.last_name = last_name
+        await self.session.flush()
+        return user

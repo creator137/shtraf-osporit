@@ -47,7 +47,7 @@ class DocumentService:
         telegram_file_id: str,
         original_filename: str | None,
         mime_type: str | None,
-        local_path: str,
+        local_path: str | None,
     ) -> Document:
         document = Document(
             case_id=case.id,

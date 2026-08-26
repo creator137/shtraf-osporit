@@ -28,5 +28,5 @@ def test_model_constraints_and_defaults() -> None:
     assert telegram_id.unique is True
     assert next(iter(case_user_id.foreign_keys)).target_fullname == "users.id"
     assert next(iter(document_case_id.foreign_keys)).target_fullname == "cases.id"
-    assert status.default.arg is CaseStatus.NEW
-    assert str(status.server_default.arg) == CaseStatus.NEW.value
+    assert status.default.arg is CaseStatus.DOCUMENT_UPLOADED
+    assert str(status.server_default.arg) == CaseStatus.DOCUMENT_UPLOADED.value

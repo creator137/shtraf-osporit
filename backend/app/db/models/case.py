@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 
 
 class CaseStatus(str, Enum):
-    NEW = "NEW"
     DOCUMENT_UPLOADED = "DOCUMENT_UPLOADED"
+    IN_PROGRESS = "IN_PROGRESS"
+    READY = "READY"
 
 
 class Case(Base):
@@ -27,8 +28,8 @@ class Case(Base):
     )
     status: Mapped[CaseStatus] = mapped_column(
         SqlEnum(CaseStatus, name="case_status"),
-        default=CaseStatus.NEW,
-        server_default=CaseStatus.NEW.value,
+        default=CaseStatus.DOCUMENT_UPLOADED,
+        server_default=CaseStatus.DOCUMENT_UPLOADED.value,
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

@@ -2,7 +2,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import Case
+from app.db.models import Case, CaseStatus
 
 
 class CaseService:
@@ -31,3 +31,8 @@ class CaseService:
             .where(Case.id == case_id, Case.user_id == user_id)
             .options(selectinload(Case.documents))
         )
+
+    async def update_status(self, case: Case, status: CaseStatus) -> Case:
+        case.status = status
+        await self.session.flush()
+        return case
