@@ -1,4 +1,5 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User
@@ -20,13 +21,26 @@ class UserService:
         first_name: str | None,
         last_name: str | None,
     ) -> User:
-        user = await self.get_by_telegram_id(telegram_id)
-        if user is None:
-            user = User(telegram_id=telegram_id)
-            self.session.add(user)
-
-        user.username = username
-        user.first_name = first_name
-        user.last_name = last_name
-        await self.session.flush()
-        return user
+        statement = (
+            insert(User)
+            .values(
+                telegram_id=telegram_id,
+                username=username,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            .on_conflict_do_update(
+                index_elements=[User.telegram_id],
+                set_={
+                    "username": username,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(User)
+        )
+        users = await self.session.scalars(
+            statement, execution_options={"populate_existing": True}
+        )
+        return users.one()

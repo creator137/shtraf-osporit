@@ -1,8 +1,11 @@
+import asyncio
+
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CaseStatus, User
+from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.document_service import DocumentService
 from app.services.user_service import UserService
@@ -21,6 +24,35 @@ async def test_user_registration_is_idempotent(db_session: AsyncSession) -> None
     assert first.id == second.id
     assert second.username == "updated"
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_user_registration_is_idempotent() -> None:
+    telegram_id = 9_999_999_999_999
+
+    async def register(username: str) -> int:
+        async with async_session_factory() as session:
+            user = await UserService(session).get_or_create(
+                telegram_id, username, "Concurrent", "User"
+            )
+            await session.commit()
+            return user.id
+
+    try:
+        first_id, second_id = await asyncio.gather(
+            register("first"), register("second")
+        )
+        async with async_session_factory() as session:
+            count = await session.scalar(
+                select(func.count(User.id)).where(User.telegram_id == telegram_id)
+            )
+
+        assert first_id == second_id
+        assert count == 1
+    finally:
+        async with async_session_factory() as session:
+            await session.execute(delete(User).where(User.telegram_id == telegram_id))
+            await session.commit()
 
 
 @pytest.mark.asyncio
