@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Backend foundation for Shtraf.Osporit"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "aiogram>=3,<4",
     "alembic>=1.13,<2",
     "asyncpg>=0.29,<1",
     "pydantic>=2.8,<3",
@@ -14,9 +15,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3,<10",
+    "pytest-asyncio>=0.25,<2",
 ]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
+asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]

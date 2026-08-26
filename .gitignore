@@ -23,6 +23,9 @@ build/
 .vite/
 *.local
 
+# Local uploads
+backend/storage/
+
 # IDEs and editors
 .idea/
 .vscode/

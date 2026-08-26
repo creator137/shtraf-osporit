@@ -1,6 +1,6 @@
 # Backend
 
-Python 3.12 backend foundation with async SQLAlchemy 2, PostgreSQL, Alembic, Pydantic, and pytest.
+Python 3.12 backend with aiogram 3, async SQLAlchemy 2, PostgreSQL, Alembic, Pydantic, and pytest.
 
 ## Local Setup
 
@@ -15,6 +15,8 @@ Python 3.12 backend foundation with async SQLAlchemy 2, PostgreSQL, Alembic, Pyd
    ```text
    postgresql+asyncpg://<user>:<password>@localhost:5432/<database>
    ```
+
+   Set `BOT_TOKEN` to the test bot token. Keep `.env` local and never commit it.
 
 2. From the repository root, start PostgreSQL:
 
@@ -40,3 +42,11 @@ Python 3.12 backend foundation with async SQLAlchemy 2, PostgreSQL, Alembic, Pyd
    ```bash
    uv run pytest
    ```
+
+6. Start the Telegram bot:
+
+   ```bash
+   uv run python -m app.bot.main
+   ```
+
+Uploaded documents are stored under `backend/storage/cases/`. This directory is ignored by Git.
