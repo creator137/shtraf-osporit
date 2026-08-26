@@ -37,20 +37,13 @@ async def _save_document(
     if message.from_user is None:
         return
     user = await UserService(session).get_by_telegram_id(message.from_user.id)
-    state_data = await state.get_data()
-    case_id = state_data.get("case_id")
-    if user is None or not isinstance(case_id, int):
+    if user is None:
         await state.clear()
         await message.answer("Начните заново с команды /start.")
         return
 
-    case = await CaseService(session).get_for_user(user.id, case_id)
-    if case is None:
-        await state.clear()
-        await message.answer("Дело не найдено. Начните заново с команды /start.")
-        return
-
     settings = get_settings()
+    case = await CaseService(session).create(user.id)
     destination: Path | None = None
     local_path: str | None = None
     try:
@@ -67,7 +60,8 @@ async def _save_document(
             local_path=local_path,
         )
     except Exception:
-        destination.unlink(missing_ok=True)
+        if destination is not None:
+            destination.unlink(missing_ok=True)
         raise
 
     await state.clear()

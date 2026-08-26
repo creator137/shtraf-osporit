@@ -61,9 +61,7 @@ async def create_case(
         await message.answer("Сначала отправьте команду /start.")
         return
 
-    case = await CaseService(session).create(user.id)
     await state.set_state(DocumentUpload.waiting_for_file)
-    await state.update_data(case_id=case.id)
     await message.answer(
         "Отправьте постановление о штрафе в формате PDF или изображения."
     )
