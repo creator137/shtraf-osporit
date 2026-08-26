@@ -10,3 +10,4 @@ def test_settings_load_database_url() -> None:
     assert settings.database_url.scheme == "postgresql+asyncpg"
     assert settings.database_url.hosts()[0]["host"] == "localhost"
     assert settings.database_url.path == "/database"
+    assert settings.admin_origin == "http://localhost:5173"

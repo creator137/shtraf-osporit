@@ -7,13 +7,16 @@ dependencies = [
     "aiogram>=3,<4",
     "alembic>=1.13,<2",
     "asyncpg>=0.29,<1",
+    "fastapi>=0.116,<1",
     "pydantic>=2.8,<3",
     "pydantic-settings>=2.4,<3",
     "sqlalchemy>=2.0,<3",
+    "uvicorn[standard]>=0.35,<1",
 ]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28,<1",
     "pytest>=8.3,<10",
     "pytest-asyncio>=0.25,<2",
 ]

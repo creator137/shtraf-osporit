@@ -11,6 +11,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     database_url: PostgresDsn
     bot_token: SecretStr | None = None
+    admin_origin: str = "http://localhost:5173"
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",
