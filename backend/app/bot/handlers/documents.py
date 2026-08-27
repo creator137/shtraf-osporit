@@ -107,7 +107,8 @@ async def accept_consent(
     await ConsentService(session).accept_current(user)
     await state.set_state(DocumentUpload.waiting_for_file)
     await message.answer(
-        "Согласие сохранено. Теперь отправьте постановление о штрафе в формате PDF или изображения."
+        "Согласие сохранено. Теперь отправьте постановление о штрафе в формате PDF или изображения.",
+        reply_markup=main_menu_keyboard(),
     )
 
 
