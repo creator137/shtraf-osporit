@@ -193,6 +193,36 @@ def test_fine_notice_extractor_reads_gosuslugi_format() -> None:
     assert "ЦАФАП" in fields.issuing_authority
 
 
+def test_fine_notice_extractor_reads_copy_notice_format() -> None:
+    text = """
+    КОПИЯ ПОСТАНОВЛЕНИЕ 18810577260848002037
+    по делу об административном правонарушении
+    18810577260848002037
+    17.08.2026
+    ЦАФАП ОДД ГИБДД ГУ МВД России по г. Москве
+    Я, инспектор, рассмотрев материалы.
+    УСТАНОВИЛ:
+    03.07.2026 в 17:52:15 по адресу ул.Мытная, д.18, г. Москва водитель,
+    управляя транспортным средством, государственный регистрационный знак 0315УС797,
+    нарушил требование.
+    предусмотренного ч.1 ст.12.16 КоАП РФ, и назначить ему административное
+    наказание в виде административного штрафа в размере 750 руб.
+    УИН: 18810577260848002037.
+    """
+
+    fields = FineNoticeExtractor().extract(text)
+
+    assert fields.notice_number == "18810577260848002037"
+    assert fields.notice_date == "17.08.2026"
+    assert fields.uin == "18810577260848002037"
+    assert fields.fine_amount == 750
+    assert fields.article == "ч.1 ст.12.16"
+    assert fields.vehicle_plate == "0315УС797"
+    assert fields.violation_datetime == "03.07.2026 17:52"
+    assert fields.violation_place == "ул.Мытная, д.18, г. Москва"
+    assert fields.issuing_authority == "ЦАФАП ОДД ГИБДД ГУ МВД России по г. Москве"
+
+
 @pytest.mark.asyncio
 async def test_recognition_service_creates_notice_and_updates_fields(
     db_session: AsyncSession,
