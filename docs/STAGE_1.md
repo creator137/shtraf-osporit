@@ -117,6 +117,11 @@
 - `PATCH /admin/cases/{case_id}/status`;
 - `GET /admin/documents/{document_id}/file`.
 
+### Документы и согласия
+
+Подробное описание того, какие данные собираем, где храним, кто имеет доступ и
+как удаляется дело, вынесено в [docs/DOCUMENTS_AND_CONSENTS.md](./DOCUMENTS_AND_CONSENTS.md).
+
 ## Требования к инфраструктуре
 
 - Локальный PostgreSQL должен запускаться без ручного создания таблиц.
