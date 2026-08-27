@@ -21,11 +21,19 @@ class FineNoticeExtractor:
         return FineNoticeFields(
             notice_number=self._first(
                 normalized,
-                r"(?:постановлени[ея]\s*(?:N|№)?\s*)([A-ZА-Я0-9\-\/]{4,})",
-                r"(?:N|№)\s*([A-ZА-Я0-9\-\/]{4,})",
+                r"(?:постановлени[ея]\s*(?:N|№|Nº)?\s*)(\d{10,25})",
+                r"(?:N|№|Nº)\s*(\d{10,25})",
             ),
-            notice_date=self._first(normalized, r"(\d{2}\.\d{2}\.\d{4})"),
-            uin=self._first(normalized, r"(?:УИН|уникальный идентификатор начисления)\s*[:№N]?\s*(\d{20,25})"),
+            notice_date=self._first(
+                normalized,
+                r"постановлени[ея].{0,80}?от\s*(\d{2}\.\d{2}\.\d{4})",
+                r"(\d{2}\.\d{2}\.\d{4})",
+            ),
+            uin=self._first(
+                normalized,
+                r"(?:УИН|уникальный идентификатор начисления)\s*[:№N]?\s*(\d{20,25})",
+                r"/uin/(\d{20,25})",
+            ),
             fine_amount=self._amount(normalized),
             article=self._first(normalized, r"(ст\.?\s*\d+(?:\.\d+)?(?:\s*ч\.?\s*\d+)?)"),
             vehicle_plate=self._first(
@@ -34,13 +42,19 @@ class FineNoticeExtractor:
             ),
             violation_datetime=self._first(
                 normalized,
+                r"Время и место нарушения\s*(\d{2}\.\d{2}\.\d{4}).{0,40}?(\d{2}:\d{2})",
                 r"(\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2})",
             ),
             violation_place=self._first(
                 normalized,
+                r"Время и место нарушения.{0,80}?\d{2}:\d{2}\s+(.+?)(?:\s+©|\s+Яндекс|\s+Штраф выписан|$)",
                 r"(?:мест[оа]\s+(?:совершения|нарушения)\s*[:\-]?\s*)([^.]{10,200})",
             ),
             issuing_authority=self._first(
+                normalized,
+                r"Штраф выписан\s+(.+?)(?:\s+ГОС\s+услуги|\s+Установите|\s+https?://|$)",
+            )
+            or self._first(
                 normalized,
                 r"((?:ЦАФАП|ГИБДД|МВД)[^.]{0,160})",
             ),
@@ -50,12 +64,13 @@ class FineNoticeExtractor:
         for pattern in patterns:
             match = re.search(pattern, text, flags=re.IGNORECASE)
             if match:
-                return match.group(1).strip()
+                groups = [item for item in match.groups() if item]
+                return " ".join(groups).strip()
         return None
 
     def _amount(self, text: str) -> int | None:
         match = re.search(
-            r"(?:штраф|сумм[аы])\s*[:\-]?\s*(\d[\d\s]*)\s*(?:руб|р\.?)",
+            r"(?:штраф|сумм[аы](?:\s+начисления)?)\s*[:\-]?\s*(\d[\d\s]*)\s*(?:руб|р\.?|₽)",
             text,
             flags=re.IGNORECASE,
         )

@@ -128,6 +128,10 @@ export function updateFineNotice(
   })
 }
 
+export function recognizeCaseDocument(caseId: number): Promise<CaseDetail> {
+  return request(`/admin/cases/${caseId}/recognize`, { method: "POST" })
+}
+
 export function deleteCase(caseId: number): Promise<void> {
   return request(`/admin/cases/${caseId}`, { method: "DELETE" })
 }

@@ -26,6 +26,7 @@ from app.services.document_service import (
     build_storage_path,
     is_supported_document,
 )
+from app.services.ocr_service import create_ocr_provider
 from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
 
@@ -76,6 +77,20 @@ async def _save_document(
             local_path=local_path,
         )
         await RecognitionService(session).create_pending_for_document(case, document)
+        if settings.ocr_provider != "none":
+            content = (
+                destination.read_bytes()
+                if destination is not None
+                else await message.bot.download(telegram_file_id)
+            )
+            if content is not None:
+                raw_content = content.read() if hasattr(content, "read") else content
+                await RecognitionService(session).process_document(
+                    case.id,
+                    document,
+                    raw_content,
+                    create_ocr_provider(settings),
+                )
     except Exception:
         if destination is not None:
             destination.unlink(missing_ok=True)

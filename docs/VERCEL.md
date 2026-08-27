@@ -37,6 +37,9 @@ ADMIN_ORIGIN=https://<admin-domain>.vercel.app
 REDIS_URL=redis://...
 TELEGRAM_WEBHOOK_SECRET=...
 DOCUMENT_STORAGE=telegram
+OCR_PROVIDER=ocrspace
+OCR_SPACE_API_KEY=...
+OCR_SPACE_LANGUAGE=rus
 ```
 
 После добавления переменных выполните миграции из окружения, где доступен
@@ -84,6 +87,9 @@ BOT_TOKEN=...
 REDIS_URL=redis://...
 TELEGRAM_WEBHOOK_SECRET=...
 DOCUMENT_STORAGE=telegram
+OCR_PROVIDER=ocrspace
+OCR_SPACE_API_KEY=...
+OCR_SPACE_LANGUAGE=rus
 ```
 
 ## Ограничение документов
@@ -91,6 +97,20 @@ DOCUMENT_STORAGE=telegram
 В режиме `DOCUMENT_STORAGE=telegram` документы не копируются на локальный диск:
 в базе сохраняется Telegram `file_id`, а админка получает файл через Telegram API.
 Это позволяет использовать Vercel без постоянного файлового хранилища.
+
+## OCR
+
+Для Stage 2 backend может отправлять загруженный документ в OCR.space:
+
+```text
+OCR_PROVIDER=ocrspace
+OCR_SPACE_API_KEY=<ключ OCR.space>
+OCR_SPACE_LANGUAGE=rus
+```
+
+Если `OCR_SPACE_API_KEY` не задан, используется тестовый ключ OCR.space
+`helloworld`. Он подходит только для проверки интеграции и может упираться в
+лимиты провайдера.
 
 ## Проверка после деплоя
 

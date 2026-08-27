@@ -27,6 +27,7 @@ from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.document_service import BACKEND_ROOT
 from app.services.extraction_service import FineNoticeFields
+from app.services.ocr_service import create_ocr_provider
 from app.services.recognition_service import RecognitionService
 
 
@@ -287,6 +288,33 @@ async def update_fine_notice(
     return await get_case(case_id, session)
 
 
+@router.post("/cases/{case_id}/recognize", response_model=CaseDetail)
+async def recognize_case_document(
+    case_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> CaseDetail:
+    case = await session.scalar(
+        select(Case)
+        .where(Case.id == case_id)
+        .options(selectinload(Case.documents))
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+    if not case.documents:
+        raise HTTPException(status_code=404, detail="Case document not found")
+
+    document = max(case.documents, key=lambda item: item.created_at)
+    content = await document_content(document)
+    await RecognitionService(session).process_document(
+        case.id,
+        document,
+        content,
+        create_ocr_provider(get_settings()),
+    )
+    await session.commit()
+    return await get_case(case_id, session)
+
+
 @router.delete("/cases/{case_id}", status_code=204)
 async def delete_case(
     case_id: int, session: AsyncSession = Depends(get_session)
@@ -351,6 +379,28 @@ async def get_document_file(
             "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}"
         },
     )
+
+
+async def document_content(document: Document) -> bytes:
+    if document.local_path:
+        file_path = (BACKEND_ROOT / document.local_path).resolve()
+        storage_root = (BACKEND_ROOT / "storage").resolve()
+        if storage_root in file_path.parents and file_path.is_file():
+            return file_path.read_bytes()
+
+    if not document.telegram_file_id:
+        raise HTTPException(status_code=404, detail="Document file not found")
+
+    bot = create_bot(get_settings())
+    destination = BytesIO()
+    try:
+        telegram_file = await bot.get_file(document.telegram_file_id)
+        if telegram_file.file_path is None:
+            raise HTTPException(status_code=404, detail="Document file not found")
+        await bot.download_file(telegram_file.file_path, destination=destination)
+    finally:
+        await bot.session.close()
+    return destination.getvalue()
 
 
 def _latest_recognition(documents: list[Document]) -> DocumentRecognition | None:

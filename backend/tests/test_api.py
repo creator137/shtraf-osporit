@@ -14,6 +14,7 @@ from app.services.consent_service import (
 )
 from app.services.case_service import CaseService
 from app.services.document_service import DocumentService
+from app.services.ocr_service import OcrResult
 from app.services.user_service import UserService
 
 
@@ -49,7 +50,7 @@ async def test_delete_is_allowed_by_cors(api_client: AsyncClient) -> None:
     )
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-methods"] == "GET, PATCH, DELETE"
+    assert response.headers["access-control-allow-methods"] == "GET, POST, PATCH, DELETE"
 
 
 @pytest.mark.asyncio
@@ -146,6 +147,49 @@ async def test_update_fine_notice(api_client: AsyncClient, db_session: AsyncSess
     notice = response.json()["fine_notice"]
     assert notice["notice_number"] == "18810177230801000123"
     assert notice["fine_amount"] == 1500
+
+
+@pytest.mark.asyncio
+async def test_recognize_case_document(
+    api_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeOcrProvider:
+        async def recognize(self, content: bytes, filename: str, mime_type: str | None):
+            assert content == b"document-bytes"
+            return OcrResult(
+                text=(
+                    "Постановление № 18810177230801000123. "
+                    "УИН 18810177230801000123456. Штраф 1500 руб."
+                )
+            )
+
+    async def fake_document_content(document: Document) -> bytes:
+        return b"document-bytes"
+
+    monkeypatch.setattr(admin_api, "document_content", fake_document_content)
+    monkeypatch.setattr(
+        admin_api, "create_ocr_provider", lambda settings: FakeOcrProvider()
+    )
+    user = await UserService(db_session).get_or_create(
+        200_000_008, None, "Recognize", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+    await DocumentService(db_session).create(
+        case=case,
+        telegram_file_id="recognize-file",
+        original_filename="notice.jpg",
+        mime_type="image/jpeg",
+        local_path=None,
+    )
+
+    response = await api_client.post(f"/admin/cases/{case.id}/recognize")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recognition"]["status"] == "RECOGNIZED"
+    assert payload["fine_notice"]["notice_number"] == "18810177230801000123"
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     document_storage: Literal["local", "telegram"] = "local"
     admin_origin: str = "http://localhost:5173"
+    ocr_provider: Literal["none", "ocrspace"] = "ocrspace"
+    ocr_space_api_key: SecretStr | None = None
+    ocr_space_language: str = "rus"
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

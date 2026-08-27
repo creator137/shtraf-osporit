@@ -13,6 +13,7 @@ from app.services.consent_service import (
 )
 from app.services.document_service import DocumentService
 from app.services.extraction_service import FineNoticeExtractor, FineNoticeFields
+from app.services.ocr_service import OcrResult
 from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
 
@@ -162,6 +163,36 @@ def test_fine_notice_extractor_reads_basic_fields() -> None:
     assert fields.vehicle_plate == "А123ВС77"
 
 
+def test_fine_notice_extractor_reads_gosuslugi_format() -> None:
+    text = """
+    27.08.2026, 12:35
+    Постановление Nº18810518260723020721 от 23.07.2026
+    Сумма начисления
+    3 000 ₽
+    Госномер
+    P225MO159
+    Время и место нарушения
+    18.07.2026 (Суббота), 07:31
+    АВТОДОРОГА ВОТКИНСК - КЕЛЬЧИНО - ГР. ПЕРМСКОГО КРАЯ, KM 16+700
+    Штраф выписан
+    ЦАФАП в ОДД Госавтоинспекции МВД по Удмуртской Республике
+    https://www.gosuslugi.ru/pay/uin/18810518260723020721
+    """
+
+    fields = FineNoticeExtractor().extract(text)
+
+    assert fields.notice_number == "18810518260723020721"
+    assert fields.notice_date == "23.07.2026"
+    assert fields.uin == "18810518260723020721"
+    assert fields.fine_amount == 3000
+    assert fields.vehicle_plate == "P225MO159"
+    assert fields.violation_datetime == "18.07.2026 07:31"
+    assert fields.violation_place is not None
+    assert "АВТОДОРОГА ВОТКИНСК" in fields.violation_place
+    assert fields.issuing_authority is not None
+    assert "ЦАФАП" in fields.issuing_authority
+
+
 @pytest.mark.asyncio
 async def test_recognition_service_creates_notice_and_updates_fields(
     db_session: AsyncSession,
@@ -193,3 +224,43 @@ async def test_recognition_service_creates_notice_and_updates_fields(
     assert notice.recognition_id == recognition.id
     assert notice.notice_number == "18810177230801000123"
     assert notice.fine_amount == 1500
+
+
+@pytest.mark.asyncio
+async def test_recognition_service_processes_document_with_ocr_provider(
+    db_session: AsyncSession,
+) -> None:
+    class FakeOcrProvider:
+        async def recognize(self, content: bytes, filename: str, mime_type: str | None):
+            assert content == b"file-bytes"
+            assert filename == "notice.jpg"
+            assert mime_type == "image/jpeg"
+            return OcrResult(
+                text=(
+                    "Постановление № 18810177230801000123. "
+                    "УИН 18810177230801000123456. Штраф 1500 руб."
+                )
+            )
+
+    user = await UserService(db_session).get_or_create(
+        100_000_005, None, "Ocr", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+    document = await DocumentService(db_session).create(
+        case=case,
+        telegram_file_id="ocr-file-id",
+        original_filename="notice.jpg",
+        mime_type="image/jpeg",
+        local_path=None,
+    )
+
+    recognition = await RecognitionService(db_session).process_document(
+        case.id,
+        document,
+        b"file-bytes",
+        FakeOcrProvider(),
+    )
+
+    assert recognition.status is RecognitionStatus.RECOGNIZED
+    assert recognition.raw_text is not None
+    assert "Постановление" in recognition.raw_text

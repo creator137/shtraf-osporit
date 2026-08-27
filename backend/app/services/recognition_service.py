@@ -10,6 +10,7 @@ from app.db.models import (
     RecognitionStatus,
 )
 from app.services.extraction_service import FineNoticeExtractor, FineNoticeFields
+from app.services.ocr_service import OcrProvider
 
 
 class RecognitionService:
@@ -39,6 +40,27 @@ class RecognitionService:
         await self._upsert_notice(case_id, recognition.id, fields)
         await self.session.flush()
         return recognition
+
+    async def process_document(
+        self,
+        case_id: int,
+        document: Document,
+        content: bytes,
+        provider: OcrProvider,
+    ) -> DocumentRecognition:
+        recognition = await self._get_or_create_recognition(document.id)
+        recognition.status = RecognitionStatus.PROCESSING
+        recognition.error_message = None
+        await self.session.flush()
+        try:
+            result = await provider.recognize(
+                content,
+                document.original_filename or f"document-{document.id}",
+                document.mime_type,
+            )
+        except Exception as exc:
+            return await self.mark_failed(case_id, document.id, str(exc))
+        return await self.save_recognized_text(case_id, document.id, result.text)
 
     async def mark_failed(
         self, case_id: int, document_id: int, error_message: str

@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
-import { ArrowLeftIcon, ExternalLinkIcon, FileTextIcon, Trash2Icon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  ExternalLinkIcon,
+  FileSearchIcon,
+  FileTextIcon,
+  Trash2Icon,
+} from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState, ErrorState } from "@/components/data-feedback"
@@ -26,6 +32,7 @@ import {
   deleteCase,
   getCase,
   getDocumentFileUrl,
+  recognizeCaseDocument,
   updateCaseStatus,
   updateFineNotice,
   type CaseStatus,
@@ -104,6 +111,8 @@ export function CaseDetailPage() {
   const [notice, setNotice] = useState<FineNoticeItem>(emptyFineNotice)
   const [noticeSaving, setNoticeSaving] = useState(false)
   const [noticeError, setNoticeError] = useState<string | null>(null)
+  const [recognizing, setRecognizing] = useState(false)
+  const [recognitionError, setRecognitionError] = useState<string | null>(null)
 
   useEffect(() => {
     if (item) setStatus(item.status)
@@ -177,6 +186,23 @@ export function CaseDetailPage() {
       )
     } finally {
       setNoticeSaving(false)
+    }
+  }
+
+  async function handleRecognize() {
+    setRecognitionError(null)
+    setRecognizing(true)
+    try {
+      await recognizeCaseDocument(numericCaseId)
+      retry()
+    } catch (caught) {
+      setRecognitionError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось запустить распознавание."
+      )
+    } finally {
+      setRecognizing(false)
     }
   }
 
@@ -328,10 +354,22 @@ export function CaseDetailPage() {
 
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Распознавание</CardTitle>
-              <CardDescription>
-                Текст постановления и статус обработки документа.
-              </CardDescription>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Распознавание</CardTitle>
+                  <CardDescription>
+                    Текст постановления и статус обработки документа.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleRecognize}
+                  disabled={recognizing || item.documents.length === 0}
+                >
+                  <FileSearchIcon data-icon="inline-start" />
+                  {recognizing ? "Распознавание..." : "Распознать"}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <dl className="flex flex-col gap-3">
@@ -353,6 +391,9 @@ export function CaseDetailPage() {
                     "Текст распознавания пока не сохранён."}
                 </pre>
               </div>
+              {recognitionError ? (
+                <p className="text-sm text-destructive">{recognitionError}</p>
+              ) : null}
             </CardContent>
           </Card>
 
