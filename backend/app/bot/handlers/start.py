@@ -7,8 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.main import (
     CHECK_FINE_TEXT,
     HELP_TEXT,
+    consent_keyboard,
     main_menu_keyboard,
 )
+from app.bot.states import DocumentUpload
+from app.services.consent_service import PERSONAL_DATA_CONSENT_TEXT, ConsentService
 from app.services.user_service import UserService
 
 
@@ -28,12 +31,23 @@ async def start(message: Message, state: FSMContext, session: AsyncSession) -> N
         last_name=telegram_user.last_name,
     )
     await state.clear()
+    user = await UserService(session).get_by_telegram_id(telegram_user.id)
+    if user is None:
+        return
+
+    if await ConsentService(session).has_current_consent(user.id):
+        await state.set_state(DocumentUpload.waiting_for_file)
+        await message.answer(
+            "С возвращением!\n\n"
+            "Отправьте постановление о штрафе PDF-файлом или изображением.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
+    await state.set_state(DocumentUpload.waiting_for_consent)
     await message.answer(
-        "Добро пожаловать в сервис «Штраф.Оспорить»!\n\n"
-        "Чтобы начать, нажмите «Оспорить штраф», подтвердите согласие "
-        "на обработку данных и отправьте постановление о штрафе "
-        "PDF-файлом или изображением.",
-        reply_markup=main_menu_keyboard(),
+        PERSONAL_DATA_CONSENT_TEXT,
+        reply_markup=consent_keyboard(),
     )
 
 
