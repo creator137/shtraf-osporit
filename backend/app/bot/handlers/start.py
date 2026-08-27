@@ -29,7 +29,10 @@ async def start(message: Message, state: FSMContext, session: AsyncSession) -> N
     )
     await state.clear()
     await message.answer(
-        "Готово. Чтобы начать, нажмите «Оспорить штраф» и загрузите постановление PDF или изображением.",
+        "Добро пожаловать в сервис «Штраф.Оспорить»!\n\n"
+        "Чтобы начать, нажмите «Оспорить штраф», подтвердите согласие "
+        "на обработку данных и отправьте постановление о штрафе "
+        "PDF-файлом или изображением.",
         reply_markup=main_menu_keyboard(),
     )
 
