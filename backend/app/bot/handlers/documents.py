@@ -26,6 +26,7 @@ from app.services.document_service import (
     build_storage_path,
     is_supported_document,
 )
+from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
 
 
@@ -67,13 +68,14 @@ async def _save_document(
             destination.parent.mkdir(parents=True, exist_ok=True)
             await message.bot.download(telegram_file_id, destination=destination)
             local_path = destination.relative_to(BACKEND_ROOT).as_posix()
-        await DocumentService(session).create(
+        document = await DocumentService(session).create(
             case=case,
             telegram_file_id=telegram_file_id,
             original_filename=original_filename,
             mime_type=mime_type,
             local_path=local_path,
         )
+        await RecognitionService(session).create_pending_for_document(case, document)
     except Exception:
         if destination is not None:
             destination.unlink(missing_ok=True)
@@ -83,7 +85,8 @@ async def _save_document(
     await message.answer(
         "Постановление загружено.\n\n"
         f"Дело №{case.id} создано.\n"
-        "На следующем этапе система сможет распознать данные постановления.",
+        "Документ принят в обработку. На этой стадии оператор проверит "
+        "распознанные данные постановления в админке.",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text=MY_CASES_TEXT, callback_data="cases:list")]

@@ -10,6 +10,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.db.models.document import Document
+    from app.db.models.fine_notice import FineNotice
     from app.db.models.user import User
 
 
@@ -45,4 +46,10 @@ class Case(Base):
     user: Mapped["User"] = relationship(back_populates="cases")
     documents: Mapped[list["Document"]] = relationship(
         back_populates="case", cascade="all, delete-orphan", passive_deletes=True
+    )
+    fine_notice: Mapped["FineNotice | None"] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
     )

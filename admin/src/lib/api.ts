@@ -1,6 +1,12 @@
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
 
 export type CaseStatus = "DOCUMENT_UPLOADED" | "IN_PROGRESS" | "READY"
+export type RecognitionStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "RECOGNIZED"
+  | "FAILED"
+  | "VERIFIED"
 
 export interface UserSummary {
   telegram_id: number
@@ -32,6 +38,28 @@ export interface DocumentItem {
   created_at: string
 }
 
+export interface RecognitionItem {
+  id: number
+  document_id: number
+  status: RecognitionStatus
+  raw_text: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FineNoticeItem {
+  notice_number: string | null
+  notice_date: string | null
+  uin: string | null
+  fine_amount: number | null
+  article: string | null
+  vehicle_plate: string | null
+  violation_datetime: string | null
+  violation_place: string | null
+  issuing_authority: string | null
+}
+
 export interface CaseDetail {
   id: number
   status: CaseStatus
@@ -39,6 +67,8 @@ export interface CaseDetail {
   updated_at: string
   user: UserSummary
   documents: DocumentItem[]
+  recognition: RecognitionItem | null
+  fine_notice: FineNoticeItem | null
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -84,6 +114,17 @@ export function updateCaseStatus(
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
+  })
+}
+
+export function updateFineNotice(
+  caseId: number,
+  payload: Partial<FineNoticeItem>
+): Promise<CaseDetail> {
+  return request(`/admin/cases/${caseId}/fine-notice`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   })
 }
 

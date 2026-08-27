@@ -113,9 +113,39 @@ async def test_case_detail(api_client: AsyncClient, db_session: AsyncSession) ->
     assert payload["user"]["username"] == "detail_test"
     assert payload["documents"][0]["id"] == document.id
     assert "local_path" not in payload["documents"][0]
+    assert payload["recognition"] is None
+    assert payload["fine_notice"] is None
 
     missing = await api_client.get("/admin/cases/999999999")
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_fine_notice(api_client: AsyncClient, db_session: AsyncSession) -> None:
+    user = await UserService(db_session).get_or_create(
+        200_000_007, None, "Notice", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+
+    response = await api_client.patch(
+        f"/admin/cases/{case.id}/fine-notice",
+        json={
+            "notice_number": "18810177230801000123",
+            "notice_date": "01.08.2026",
+            "uin": "18810177230801000123456",
+            "fine_amount": 1500,
+            "article": "ст. 12.9",
+            "vehicle_plate": "А123ВС77",
+            "violation_datetime": "01.08.2026 12:30",
+            "violation_place": "Москва, Тверская улица",
+            "issuing_authority": "ЦАФАП",
+        },
+    )
+
+    assert response.status_code == 200
+    notice = response.json()["fine_notice"]
+    assert notice["notice_number"] == "18810177230801000123"
+    assert notice["fine_amount"] == 1500
 
 
 @pytest.mark.asyncio

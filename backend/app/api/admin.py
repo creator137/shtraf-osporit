@@ -13,10 +13,21 @@ from sqlalchemy.orm import selectinload
 
 from app.bot.application import create_bot
 from app.config import get_settings
-from app.db.models import Case, CaseStatus, Document, User, UserConsent
+from app.db.models import (
+    Case,
+    CaseStatus,
+    Document,
+    DocumentRecognition,
+    FineNotice,
+    RecognitionStatus,
+    User,
+    UserConsent,
+)
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.document_service import BACKEND_ROOT
+from app.services.extraction_service import FineNoticeFields
+from app.services.recognition_service import RecognitionService
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -57,6 +68,28 @@ class DocumentItem(BaseModel):
     created_at: datetime
 
 
+class RecognitionItem(BaseModel):
+    id: int
+    document_id: int
+    status: RecognitionStatus
+    raw_text: str | None
+    error_message: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FineNoticeItem(BaseModel):
+    notice_number: str | None
+    notice_date: str | None
+    uin: str | None
+    fine_amount: int | None
+    article: str | None
+    vehicle_plate: str | None
+    violation_datetime: str | None
+    violation_place: str | None
+    issuing_authority: str | None
+
+
 class CaseDetail(BaseModel):
     id: int
     status: CaseStatus
@@ -64,10 +97,24 @@ class CaseDetail(BaseModel):
     updated_at: datetime
     user: UserSummary
     documents: list[DocumentItem]
+    recognition: RecognitionItem | None
+    fine_notice: FineNoticeItem | None
 
 
 class CaseStatusUpdate(BaseModel):
     status: CaseStatus
+
+
+class FineNoticeUpdate(BaseModel):
+    notice_number: str | None = None
+    notice_date: str | None = None
+    uin: str | None = None
+    fine_amount: int | None = None
+    article: str | None = None
+    vehicle_plate: str | None = None
+    violation_datetime: str | None = None
+    violation_place: str | None = None
+    issuing_authority: str | None = None
 
 
 def user_summary(user: User) -> UserSummary:
@@ -164,11 +211,16 @@ async def get_case(
     case = await session.scalar(
         select(Case)
         .where(Case.id == case_id)
-        .options(selectinload(Case.user), selectinload(Case.documents))
+        .options(
+            selectinload(Case.user),
+            selectinload(Case.documents).selectinload(Document.recognition),
+            selectinload(Case.fine_notice),
+        )
     )
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    recognition = _latest_recognition(case.documents)
     return CaseDetail(
         id=case.id,
         status=case.status,
@@ -184,6 +236,8 @@ async def get_case(
             )
             for document in case.documents
         ],
+        recognition=recognition_item(recognition),
+        fine_notice=fine_notice_item(case.fine_notice),
     )
 
 
@@ -201,6 +255,34 @@ async def update_case_status(
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
     await CaseService(session).update_status(case, payload.status)
+    await session.commit()
+    return await get_case(case_id, session)
+
+
+@router.patch("/cases/{case_id}/fine-notice", response_model=CaseDetail)
+async def update_fine_notice(
+    case_id: int,
+    payload: FineNoticeUpdate,
+    session: AsyncSession = Depends(get_session),
+) -> CaseDetail:
+    exists = await session.scalar(select(Case.id).where(Case.id == case_id))
+    if exists is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    await RecognitionService(session).update_notice(
+        case_id,
+        FineNoticeFields(
+            notice_number=payload.notice_number,
+            notice_date=payload.notice_date,
+            uin=payload.uin,
+            fine_amount=payload.fine_amount,
+            article=payload.article,
+            vehicle_plate=payload.vehicle_plate,
+            violation_datetime=payload.violation_datetime,
+            violation_place=payload.violation_place,
+            issuing_authority=payload.issuing_authority,
+        ),
+    )
     await session.commit()
     return await get_case(case_id, session)
 
@@ -268,4 +350,45 @@ async def get_document_file(
         headers={
             "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}"
         },
+    )
+
+
+def _latest_recognition(documents: list[Document]) -> DocumentRecognition | None:
+    recognitions = [
+        document.recognition
+        for document in documents
+        if document.recognition is not None
+    ]
+    return max(recognitions, key=lambda item: item.created_at) if recognitions else None
+
+
+def recognition_item(
+    recognition: DocumentRecognition | None,
+) -> RecognitionItem | None:
+    if recognition is None:
+        return None
+    return RecognitionItem(
+        id=recognition.id,
+        document_id=recognition.document_id,
+        status=recognition.status,
+        raw_text=recognition.raw_text,
+        error_message=recognition.error_message,
+        created_at=recognition.created_at,
+        updated_at=recognition.updated_at,
+    )
+
+
+def fine_notice_item(notice: FineNotice | None) -> FineNoticeItem | None:
+    if notice is None:
+        return None
+    return FineNoticeItem(
+        notice_number=notice.notice_number,
+        notice_date=notice.notice_date,
+        uin=notice.uin,
+        fine_amount=notice.fine_amount,
+        article=notice.article,
+        vehicle_plate=notice.vehicle_plate,
+        violation_datetime=notice.violation_datetime,
+        violation_place=notice.violation_place,
+        issuing_authority=notice.issuing_authority,
     )

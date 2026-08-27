@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import CaseStatus, User, UserConsent
+from app.db.models import CaseStatus, RecognitionStatus, User, UserConsent
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.consent_service import (
@@ -12,6 +12,8 @@ from app.services.consent_service import (
     ConsentService,
 )
 from app.services.document_service import DocumentService
+from app.services.extraction_service import FineNoticeExtractor, FineNoticeFields
+from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
 
 
@@ -140,3 +142,54 @@ async def test_document_is_linked_to_case(db_session: AsyncSession) -> None:
     assert loaded_case is not None
     assert loaded_case.status is CaseStatus.DOCUMENT_UPLOADED
     assert [item.id for item in loaded_case.documents] == [document.id]
+
+
+def test_fine_notice_extractor_reads_basic_fields() -> None:
+    text = (
+        "Постановление № 18810177230801000123 от 01.08.2026. "
+        "УИН 18810177230801000123456. Штраф 1500 руб. "
+        "ст. 12.9 КоАП РФ. Автомобиль А123ВС77. "
+        "Место нарушения: Москва, Тверская улица, дом 1."
+    )
+
+    fields = FineNoticeExtractor().extract(text)
+
+    assert fields.notice_number == "18810177230801000123"
+    assert fields.notice_date == "01.08.2026"
+    assert fields.uin == "18810177230801000123456"
+    assert fields.fine_amount == 1500
+    assert fields.article == "ст. 12.9"
+    assert fields.vehicle_plate == "А123ВС77"
+
+
+@pytest.mark.asyncio
+async def test_recognition_service_creates_notice_and_updates_fields(
+    db_session: AsyncSession,
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_004, None, "Recognition", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+    document = await DocumentService(db_session).create(
+        case=case,
+        telegram_file_id="recognition-file-id",
+        original_filename="notice.pdf",
+        mime_type="application/pdf",
+        local_path=None,
+    )
+    service = RecognitionService(db_session)
+
+    recognition = await service.create_pending_for_document(case, document)
+    notice = await service.update_notice(
+        case.id,
+        FineNoticeFields(
+            notice_number="18810177230801000123",
+            fine_amount=1500,
+        ),
+    )
+
+    assert recognition.status is RecognitionStatus.VERIFIED
+    assert notice.case_id == case.id
+    assert notice.recognition_id == recognition.id
+    assert notice.notice_number == "18810177230801000123"
+    assert notice.fine_amount == 1500

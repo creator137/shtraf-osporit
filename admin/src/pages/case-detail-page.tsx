@@ -27,7 +27,10 @@ import {
   getCase,
   getDocumentFileUrl,
   updateCaseStatus,
+  updateFineNotice,
   type CaseStatus,
+  type FineNoticeItem,
+  type RecognitionStatus,
 } from "@/lib/api"
 import { formatDate, formatName, formatUsername } from "@/lib/format"
 import {
@@ -37,6 +40,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+
+const emptyFineNotice: FineNoticeItem = {
+  notice_number: null,
+  notice_date: null,
+  uin: null,
+  fine_amount: null,
+  article: null,
+  vehicle_plate: null,
+  violation_datetime: null,
+  violation_place: null,
+  issuing_authority: null,
+}
+
+const recognitionLabels: Record<RecognitionStatus, string> = {
+  PENDING: "Ожидает обработки",
+  PROCESSING: "Обрабатывается",
+  RECOGNIZED: "Распознано",
+  FAILED: "Ошибка распознавания",
+  VERIFIED: "Проверено оператором",
+}
 
 function DetailLoading() {
   return (
@@ -77,9 +101,16 @@ export function CaseDetailPage() {
   const [statusSaving, setStatusSaving] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [notice, setNotice] = useState<FineNoticeItem>(emptyFineNotice)
+  const [noticeSaving, setNoticeSaving] = useState(false)
+  const [noticeError, setNoticeError] = useState<string | null>(null)
 
   useEffect(() => {
     if (item) setStatus(item.status)
+  }, [item])
+
+  useEffect(() => {
+    if (item) setNotice(item.fine_notice ?? emptyFineNotice)
   }, [item])
 
   async function handleStatusChange(nextStatus: string) {
@@ -115,6 +146,37 @@ export function CaseDetailPage() {
       )
     } finally {
       setDeleting(false)
+    }
+  }
+
+  function updateNoticeField(
+    field: keyof FineNoticeItem,
+    value: string
+  ) {
+    setNotice((current) => ({
+      ...current,
+      [field]:
+        field === "fine_amount"
+          ? value === ""
+            ? null
+            : Number(value)
+          : value || null,
+    }))
+  }
+
+  async function handleNoticeSave() {
+    setNoticeError(null)
+    setNoticeSaving(true)
+    try {
+      const updated = await updateFineNotice(numericCaseId, notice)
+      setNotice(updated.fine_notice ?? emptyFineNotice)
+      retry()
+    } catch (caught) {
+      setNoticeError(
+        caught instanceof Error ? caught.message : "Не удалось сохранить данные."
+      )
+    } finally {
+      setNoticeSaving(false)
     }
   }
 
@@ -261,6 +323,141 @@ export function CaseDetailPage() {
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Распознавание</CardTitle>
+              <CardDescription>
+                Текст постановления и статус обработки документа.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <dl className="flex flex-col gap-3">
+                <DetailRow
+                  label="Статус"
+                  value={
+                    item.recognition
+                      ? recognitionLabels[item.recognition.status]
+                      : "Не запускалось"
+                  }
+                />
+                {item.recognition?.error_message ? (
+                  <DetailRow label="Ошибка" value={item.recognition.error_message} />
+                ) : null}
+              </dl>
+              <div className="rounded-md border bg-muted/30 p-3">
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-sm">
+                  {item.recognition?.raw_text ||
+                    "Текст распознавания пока не сохранён."}
+                </pre>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Данные постановления</CardTitle>
+              <CardDescription>
+                Поля, которые оператор проверяет и исправляет вручную.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1 text-sm font-medium">
+                  Номер постановления
+                  <Input
+                    value={notice.notice_number ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("notice_number", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Дата постановления
+                  <Input
+                    value={notice.notice_date ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("notice_date", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  УИН
+                  <Input
+                    value={notice.uin ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("uin", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Сумма штрафа
+                  <Input
+                    type="number"
+                    min="0"
+                    value={notice.fine_amount ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("fine_amount", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Статья
+                  <Input
+                    value={notice.article ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("article", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Госномер
+                  <Input
+                    value={notice.vehicle_plate ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("vehicle_plate", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Дата и время нарушения
+                  <Input
+                    value={notice.violation_datetime ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("violation_datetime", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm font-medium">
+                  Орган
+                  <Input
+                    value={notice.issuing_authority ?? ""}
+                    onChange={(event) =>
+                      updateNoticeField("issuing_authority", event.target.value)
+                    }
+                  />
+                </label>
+              </div>
+              <label className="grid gap-1 text-sm font-medium">
+                Место нарушения
+                <textarea
+                  className="min-h-24 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  value={notice.violation_place ?? ""}
+                  onChange={(event) =>
+                    updateNoticeField("violation_place", event.target.value)
+                  }
+                />
+              </label>
+              {noticeError ? (
+                <p className="text-sm text-destructive">{noticeError}</p>
+              ) : null}
+              <div>
+                <Button onClick={handleNoticeSave} disabled={noticeSaving}>
+                  {noticeSaving ? "Сохранение..." : "Сохранить данные"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
