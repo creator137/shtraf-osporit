@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,27 @@ from app.services.user_service import UserService
 
 
 router = Router(name="start")
+
+
+@router.message(Command("restart"))
+async def restart(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    telegram_user = message.from_user
+    if telegram_user is None:
+        return
+
+    deleted = await UserService(session).delete_by_telegram_id(telegram_user.id)
+    await state.clear()
+    if deleted:
+        await message.answer(
+            "Ваш профиль, согласия и дела удалены.\n\n"
+            "Чтобы начать заново, отправьте команду /start."
+        )
+        return
+
+    await message.answer(
+        "Профиль и дела не найдены.\n\n"
+        "Чтобы начать, отправьте команду /start."
+    )
 
 
 @router.message(CommandStart())

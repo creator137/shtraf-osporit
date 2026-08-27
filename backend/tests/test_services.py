@@ -31,6 +31,31 @@ async def test_user_registration_is_idempotent(db_session: AsyncSession) -> None
 
 
 @pytest.mark.asyncio
+async def test_delete_user_removes_account_data(db_session: AsyncSession) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_011, "delete_test", "Delete", "User"
+    )
+    case = await CaseService(db_session).create(user.id)
+    await ConsentService(db_session).accept_current(user)
+
+    deleted = await UserService(db_session).delete_by_telegram_id(user.telegram_id)
+
+    assert deleted is True
+    assert await UserService(db_session).get_by_telegram_id(user.telegram_id) is None
+    assert (
+        await db_session.scalar(
+            select(func.count(UserConsent.id)).where(UserConsent.user_id == user.id)
+        )
+        == 0
+    )
+    assert (
+        await db_session.scalar(select(func.count(User.id)).where(User.id == user.id))
+        == 0
+    )
+    assert await CaseService(db_session).get_for_user(user.id, case.id) is None
+
+
+@pytest.mark.asyncio
 async def test_consent_accept_current_is_idempotent(db_session: AsyncSession) -> None:
     user = await UserService(db_session).get_or_create(
         100_000_010, "consent_test", "Consent", "User"

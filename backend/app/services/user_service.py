@@ -14,6 +14,13 @@ class UserService:
             select(User).where(User.telegram_id == telegram_id)
         )
 
+    async def delete_by_telegram_id(self, telegram_id: int) -> bool:
+        user = await self.get_by_telegram_id(telegram_id)
+        if user is None:
+            return False
+        await self.session.delete(user)
+        return True
+
     async def get_or_create(
         self,
         telegram_id: int,
