@@ -10,3 +10,5 @@
 8. Future functionality is not implemented in advance.
 9. Telegram business logic must not live directly in handlers.
 10. External OCR and LLM providers will be selected later, when the corresponding stage begins.
+11. Stage 2 starts with OCR, basic field extraction, and manual correction only.
+12. Legal analysis, cancellation probability, and complaint generation remain outside Stage 2.

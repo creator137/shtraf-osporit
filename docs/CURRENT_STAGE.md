@@ -1,41 +1,47 @@
-# Stage 1 - Foundation + Basic Product Skeleton
+# Stage 2 - Document Processing + Manual Correction
 
-Client price for this stage: **10,000 RUB**. This value exists only to clarify scope.
+Client price for this stage must be agreed separately. This file defines scope only.
 
-## Included In Stage 1
+## Included In Stage 2
 
-The following work is expected in subsequent Stage 1 tasks:
+The following work is expected in Stage 2 tasks:
 
-- Basic Python backend.
-- PostgreSQL.
-- Core User, Case, and Document models.
-- Telegram `/start` command.
-- User registration by Telegram ID.
-- Main menu.
-- Case creation.
-- Document upload.
-- "My cases" list.
-- Basic case details view.
-- Basic admin panel.
-- User list.
-- Case list.
-- Basic case information view in the admin.
+- OCR processing for uploaded fine documents.
+- Storage of raw OCR text.
+- Extraction of basic постановление fields from OCR text.
+- Admin view of recognized text and extracted fields.
+- Manual correction of extracted fields in the admin panel.
+- Case processing status updates for recognition flow.
+- Basic error state when document processing fails.
+- Tests for OCR service boundaries, extraction, API, and admin form behavior.
 
-## Excluded From Stage 1
+## Basic Fields For Stage 2
 
-- OCR.
-- Traffic fine document field extraction.
-- LLM.
-- OpenAI, Claude, or Gemini integration.
+- постановление number;
+- постановление date;
+- UIN;
+- fine amount;
+- article / КоАП reference when visible;
+- vehicle plate number when visible;
+- violation date/time when visible;
+- violation place when visible;
+- issuing authority when visible.
+
+## Excluded From Stage 2
+
 - Legal Rules Engine.
 - Legal knowledge base.
-- Camera validation.
-- Automatic fine analysis.
+- LLM-based legal reasoning.
+- OpenAI, Claude, or Gemini integration.
+- Probability of cancellation.
+- Automatic legal grounds.
+- Complaint generation.
 - DOCX or PDF generation.
 - Payments.
-- Automatic complaint generation.
+- ESIA, GIS GMP, or partner API integration.
+- Automatic filing of complaints.
 - Lawyer workflow.
 - Complex roles.
 - Complex analytics.
 
-> Do not implement anything from the excluded list unless the user explicitly changes the current stage.
+> Keep Stage 2 focused on reading the uploaded document and letting the operator correct recognized data.

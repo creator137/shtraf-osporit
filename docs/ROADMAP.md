@@ -10,6 +10,9 @@ Foundation, basic Telegram flow, database, and basic admin.
 
 Document upload processing, OCR, extraction, and manual correction.
 
+Current focus: recognize uploaded постановление text, extract basic fields, and
+let the operator correct them in the admin panel.
+
 ## Stage 3
 
 Legal questionnaire, legal knowledge storage, and Legal Rules Engine.
