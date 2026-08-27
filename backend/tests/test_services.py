@@ -4,9 +4,13 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import CaseStatus, User
+from app.db.models import CaseStatus, User, UserConsent
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
+from app.services.consent_service import (
+    PERSONAL_DATA_CONSENT_VERSION,
+    ConsentService,
+)
 from app.services.document_service import DocumentService
 from app.services.user_service import UserService
 
@@ -24,6 +28,29 @@ async def test_user_registration_is_idempotent(db_session: AsyncSession) -> None
     assert first.id == second.id
     assert second.username == "updated"
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_consent_accept_current_is_idempotent(db_session: AsyncSession) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_010, "consent_test", "Consent", "User"
+    )
+    service = ConsentService(db_session)
+
+    first = await service.accept_current(user)
+    second = await service.accept_current(user)
+
+    count = await db_session.scalar(
+        select(func.count(UserConsent.id)).where(UserConsent.user_id == user.id)
+    )
+    latest = await service.latest_for_user(user.id)
+
+    assert first.id == second.id
+    assert count == 1
+    assert latest is not None
+    assert latest.telegram_id == user.telegram_id
+    assert latest.version == PERSONAL_DATA_CONSENT_VERSION
+    assert await service.has_current_consent(user.id) is True
 
 
 @pytest.mark.asyncio

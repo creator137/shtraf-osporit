@@ -9,9 +9,16 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards.main import MY_CASES_TEXT
+from app.bot.keyboards.main import (
+    CONSENT_ACCEPT_TEXT,
+    CONSENT_DECLINE_TEXT,
+    MY_CASES_TEXT,
+    consent_keyboard,
+    main_menu_keyboard,
+)
 from app.bot.states import DocumentUpload
 from app.config import get_settings
+from app.services.consent_service import ConsentService
 from app.services.case_service import CaseService
 from app.services.document_service import (
     BACKEND_ROOT,
@@ -40,6 +47,14 @@ async def _save_document(
     if user is None:
         await state.clear()
         await message.answer("Начните заново с команды /start.")
+        return
+
+    if not await ConsentService(session).has_current_consent(user.id):
+        await state.set_state(DocumentUpload.waiting_for_consent)
+        await message.answer(
+            "Перед загрузкой постановления нужно принять согласие.",
+            reply_markup=consent_keyboard(),
+        )
         return
 
     settings = get_settings()
@@ -75,6 +90,39 @@ async def _save_document(
             ]
         ),
     )
+
+
+@router.message(DocumentUpload.waiting_for_consent, F.text == CONSENT_ACCEPT_TEXT)
+async def accept_consent(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    if message.from_user is None:
+        return
+    user = await UserService(session).get_by_telegram_id(message.from_user.id)
+    if user is None:
+        await state.clear()
+        await message.answer("Начните заново с команды /start.", reply_markup=main_menu_keyboard())
+        return
+
+    await ConsentService(session).accept_current(user)
+    await state.set_state(DocumentUpload.waiting_for_file)
+    await message.answer(
+        "Согласие сохранено. Теперь отправьте постановление о штрафе в формате PDF или изображения."
+    )
+
+
+@router.message(DocumentUpload.waiting_for_consent, F.text == CONSENT_DECLINE_TEXT)
+async def decline_consent(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer(
+        "Без согласия загрузить постановление и создать дело нельзя.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
+@router.message(DocumentUpload.waiting_for_consent)
+async def unsupported_consent_answer(message: Message) -> None:
+    await message.answer("Выберите «Согласен» или «Не согласен» на клавиатуре.")
 
 
 @router.message(DocumentUpload.waiting_for_file, F.document)

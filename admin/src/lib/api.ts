@@ -13,6 +13,8 @@ export interface UserListItem extends UserSummary {
   id: number
   created_at: string
   cases_count: number
+  consent_version: string | null
+  consent_accepted_at: string | null
 }
 
 export interface CaseListItem {

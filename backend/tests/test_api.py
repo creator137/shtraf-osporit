@@ -8,6 +8,10 @@ from app.db.models import CaseStatus
 from app.api.admin import get_session
 from app.api.main import app
 from app.db.models import Document
+from app.services.consent_service import (
+    PERSONAL_DATA_CONSENT_VERSION,
+    ConsentService,
+)
 from app.services.case_service import CaseService
 from app.services.document_service import DocumentService
 from app.services.user_service import UserService
@@ -54,6 +58,7 @@ async def test_list_users(api_client: AsyncClient, db_session: AsyncSession) -> 
         200_000_001, "admin_test", "Test", "User"
     )
     await CaseService(db_session).create(user.id)
+    await ConsentService(db_session).accept_current(user)
 
     response = await api_client.get("/admin/users")
 
@@ -61,6 +66,8 @@ async def test_list_users(api_client: AsyncClient, db_session: AsyncSession) -> 
     item = next(item for item in response.json() if item["id"] == user.id)
     assert item["telegram_id"] == 200_000_001
     assert item["cases_count"] == 1
+    assert item["consent_version"] == PERSONAL_DATA_CONSENT_VERSION
+    assert item["consent_accepted_at"] is not None
 
 
 @pytest.mark.asyncio

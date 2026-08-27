@@ -8,6 +8,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.db.models.case import Case
+    from app.db.models.consent import UserConsent
 
 
 class User(Base):
@@ -29,5 +30,8 @@ class User(Base):
     )
 
     cases: Mapped[list["Case"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
+    consents: Mapped[list["UserConsent"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )

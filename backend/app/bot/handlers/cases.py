@@ -8,10 +8,11 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards.main import CHECK_FINE_TEXT, MY_CASES_TEXT
+from app.bot.keyboards.main import CHECK_FINE_TEXT, MY_CASES_TEXT, consent_keyboard
 from app.bot.states import DocumentUpload
 from app.db.models import Case, CaseStatus
 from app.services.case_service import CaseService
+from app.services.consent_service import ConsentService, PERSONAL_DATA_CONSENT_TEXT
 from app.services.user_service import UserService
 
 
@@ -61,10 +62,13 @@ async def create_case(
         await message.answer("Сначала отправьте команду /start.")
         return
 
+    if not await ConsentService(session).has_current_consent(user.id):
+        await state.set_state(DocumentUpload.waiting_for_consent)
+        await message.answer(PERSONAL_DATA_CONSENT_TEXT, reply_markup=consent_keyboard())
+        return
+
     await state.set_state(DocumentUpload.waiting_for_file)
-    await message.answer(
-        "Отправьте постановление о штрафе в формате PDF или изображения."
-    )
+    await message.answer("Отправьте постановление о штрафе в формате PDF или изображения.")
 
 
 @router.message(F.text == MY_CASES_TEXT)

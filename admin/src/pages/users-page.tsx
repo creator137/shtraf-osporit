@@ -56,11 +56,12 @@ export function UsersPage() {
                     <TableHead>Пользователь</TableHead>
                     <TableHead>Username</TableHead>
                     <TableHead>Количество дел</TableHead>
+                    <TableHead>Согласие</TableHead>
                     <TableHead>Дата регистрации</TableHead>
                   </TableRow>
                 </TableHeader>
                 {loading ? (
-                  <TableLoading columns={6} />
+                  <TableLoading columns={7} />
                 ) : (
                   <TableBody>
                     {users?.map((user) => (
@@ -70,6 +71,11 @@ export function UsersPage() {
                         <TableCell>{formatName(user)}</TableCell>
                         <TableCell>{formatUsername(user.username)}</TableCell>
                         <TableCell>{user.cases_count}</TableCell>
+                        <TableCell>
+                          {user.consent_accepted_at
+                            ? `${formatDate(user.consent_accepted_at)} (${user.consent_version})`
+                            : "Нет"}
+                        </TableCell>
                         <TableCell>{formatDate(user.created_at)}</TableCell>
                       </TableRow>
                     ))}

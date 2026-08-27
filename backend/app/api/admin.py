@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.bot.application import create_bot
 from app.config import get_settings
-from app.db.models import Case, CaseStatus, Document, User
+from app.db.models import Case, CaseStatus, Document, User, UserConsent
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.document_service import BACKEND_ROOT
@@ -38,6 +38,8 @@ class UserListItem(UserSummary):
     id: int
     created_at: datetime
     cases_count: int
+    consent_version: str | None
+    consent_accepted_at: datetime | None
 
 
 class CaseListItem(BaseModel):
@@ -87,8 +89,29 @@ async def list_users(
         .correlate(User)
         .scalar_subquery()
     )
+    consent_version = (
+        select(UserConsent.version)
+        .where(UserConsent.user_id == User.id)
+        .order_by(desc(UserConsent.accepted_at))
+        .limit(1)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    consent_accepted_at = (
+        select(UserConsent.accepted_at)
+        .where(UserConsent.user_id == User.id)
+        .order_by(desc(UserConsent.accepted_at))
+        .limit(1)
+        .correlate(User)
+        .scalar_subquery()
+    )
     rows = await session.execute(
-        select(User, cases_count.label("cases_count"))
+        select(
+            User,
+            cases_count.label("cases_count"),
+            consent_version.label("consent_version"),
+            consent_accepted_at.label("consent_accepted_at"),
+        )
         .order_by(desc(User.created_at))
         .limit(100)
     )
@@ -101,8 +124,10 @@ async def list_users(
             last_name=user.last_name,
             created_at=user.created_at,
             cases_count=case_count,
+            consent_version=consent_ver,
+            consent_accepted_at=consent_at,
         )
-        for user, case_count in rows
+        for user, case_count, consent_ver, consent_at in rows
     ]
 
 
