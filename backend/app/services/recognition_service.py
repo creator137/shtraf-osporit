@@ -4,6 +4,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models import (
     Case,
+    CaseStatus,
     Document,
     DocumentRecognition,
     FineNotice,
@@ -38,6 +39,7 @@ class RecognitionService:
         recognition.error_message = None
         fields = FineNoticeExtractor().extract(raw_text)
         await self._upsert_notice(case_id, recognition.id, fields)
+        await self._set_case_status(case_id, CaseStatus.IN_PROGRESS)
         await self.session.flush()
         return recognition
 
@@ -53,6 +55,7 @@ class RecognitionService:
             raise ValueError("Verified recognition cannot be overwritten")
         recognition.status = RecognitionStatus.PROCESSING
         recognition.error_message = None
+        await self._set_case_status(case_id, CaseStatus.IN_PROGRESS)
         await self.session.flush()
         try:
             result = await provider.recognize(
@@ -71,6 +74,7 @@ class RecognitionService:
         recognition.status = RecognitionStatus.FAILED
         recognition.error_message = error_message
         await self._upsert_notice(case_id, recognition.id, FineNoticeFields())
+        await self._set_case_status(case_id, CaseStatus.IN_PROGRESS)
         await self.session.flush()
         return recognition
 
@@ -88,6 +92,7 @@ class RecognitionService:
         if recognition is not None:
             recognition.status = RecognitionStatus.VERIFIED
             notice.recognition_id = recognition.id
+        await self._set_case_status(case_id, CaseStatus.READY)
         await self.session.flush()
         return notice
 
@@ -146,3 +151,8 @@ class RecognitionService:
         notice.violation_datetime = fields.violation_datetime
         notice.violation_place = fields.violation_place
         notice.issuing_authority = fields.issuing_authority
+
+    async def _set_case_status(self, case_id: int, status: CaseStatus) -> None:
+        case = await self.session.get(Case, case_id)
+        if case is not None:
+            case.status = status

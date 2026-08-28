@@ -45,18 +45,15 @@ async def start(message: Message, state: FSMContext, session: AsyncSession) -> N
     if telegram_user is None:
         return
 
-    await UserService(session).get_or_create(
-        telegram_id=telegram_user.id,
-        username=telegram_user.username,
-        first_name=telegram_user.first_name,
-        last_name=telegram_user.last_name,
-    )
     await state.clear()
     user = await UserService(session).get_by_telegram_id(telegram_user.id)
-    if user is None:
-        return
-
-    if await ConsentService(session).has_current_consent(user.id):
+    if user is not None and await ConsentService(session).has_current_consent(user.id):
+        await UserService(session).get_or_create(
+            telegram_id=telegram_user.id,
+            username=telegram_user.username,
+            first_name=telegram_user.first_name,
+            last_name=telegram_user.last_name,
+        )
         await state.set_state(DocumentUpload.waiting_for_file)
         await message.answer(
             "С возвращением!\n\n"

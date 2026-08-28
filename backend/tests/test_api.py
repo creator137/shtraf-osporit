@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.api.admin as admin_api
 import app.services.document_service as document_service_module
-from app.db.models import CaseStatus
+from app.db.models import CaseStatus, RecognitionStatus
 from app.api.admin import get_session
 from app.api.main import app
 from app.config import get_settings
@@ -86,6 +86,14 @@ async def test_list_cases(api_client: AsyncClient, db_session: AsyncSession) -> 
         mime_type="application/pdf",
         local_path="storage/cases/test/synthetic.pdf",
     )
+    recognition = await admin_api.RecognitionService(
+        db_session
+    ).create_pending_for_document(case, document)
+    await admin_api.RecognitionService(db_session).save_recognized_text(
+        case.id,
+        document.id,
+        "Постановление № 18810177230801000123. Штраф 1500 руб.",
+    )
 
     response = await api_client.get("/admin/cases")
 
@@ -93,6 +101,11 @@ async def test_list_cases(api_client: AsyncClient, db_session: AsyncSession) -> 
     item = next(item for item in response.json() if item["id"] == case.id)
     assert item["documents_count"] == 1
     assert item["user"]["telegram_id"] == 200_000_002
+    assert item["recognition_status"] == RecognitionStatus.RECOGNIZED.value
+    assert item["notice_number"] == "18810177230801000123"
+    assert item["fine_amount"] == 1500
+    assert item["recognized_fields_count"] == 2
+    assert recognition.status is RecognitionStatus.RECOGNIZED
 
 
 @pytest.mark.asyncio
@@ -149,6 +162,14 @@ async def test_update_fine_notice(api_client: AsyncClient, db_session: AsyncSess
     notice = response.json()["fine_notice"]
     assert notice["notice_number"] == "18810177230801000123"
     assert notice["fine_amount"] == 1500
+    assert response.json()["status"] == CaseStatus.READY.value
+    assert response.json()["recognized_fields_count"] == 9
+
+    invalid = await api_client.patch(
+        f"/admin/cases/{case.id}/fine-notice",
+        json={"fine_amount": -1},
+    )
+    assert invalid.status_code == 422
 
 
 @pytest.mark.asyncio

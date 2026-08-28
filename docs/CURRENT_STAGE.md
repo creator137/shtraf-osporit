@@ -1,6 +1,6 @@
 # Stage 2 - Document Processing + Manual Correction
 
-Client price for this stage must be agreed separately. This file defines scope only.
+Client price for this stage: **6 000 RUB**. This information defines the agreed scope.
 
 ## Included In Stage 2
 

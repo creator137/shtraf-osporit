@@ -9,7 +9,11 @@ import {
 import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState, ErrorState } from "@/components/data-feedback"
+import { FineNoticeForm } from "@/components/fine-notice-form"
+import { RecognitionBadge } from "@/components/recognition-badge"
 import { StatusBadge } from "@/components/status-badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -28,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useApiResource } from "@/hooks/use-api-resource"
+import { emptyFineNotice } from "@/lib/fine-notice"
 import {
   deleteCase,
   getCase,
@@ -37,7 +42,6 @@ import {
   updateFineNotice,
   type CaseStatus,
   type FineNoticeItem,
-  type RecognitionStatus,
 } from "@/lib/api"
 import { formatDate, formatName, formatUsername } from "@/lib/format"
 import {
@@ -47,27 +51,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
-
-const emptyFineNotice: FineNoticeItem = {
-  notice_number: null,
-  notice_date: null,
-  uin: null,
-  fine_amount: null,
-  article: null,
-  vehicle_plate: null,
-  violation_datetime: null,
-  violation_place: null,
-  issuing_authority: null,
-}
-
-const recognitionLabels: Record<RecognitionStatus, string> = {
-  PENDING: "Ожидает обработки",
-  PROCESSING: "Обрабатывается",
-  RECOGNIZED: "Распознано",
-  FAILED: "Ошибка распознавания",
-  VERIFIED: "Проверено оператором",
-}
 
 function DetailLoading() {
   return (
@@ -156,21 +139,6 @@ export function CaseDetailPage() {
     } finally {
       setDeleting(false)
     }
-  }
-
-  function updateNoticeField(
-    field: keyof FineNoticeItem,
-    value: string
-  ) {
-    setNotice((current) => ({
-      ...current,
-      [field]:
-        field === "fine_amount"
-          ? value === ""
-            ? null
-            : Number(value)
-          : value || null,
-    }))
   }
 
   async function handleNoticeSave() {
@@ -283,7 +251,10 @@ export function CaseDetailPage() {
                 <DetailRow label="Обновлено" value={formatDate(item.updated_at)} />
               </dl>
               {statusError ? (
-                <p className="mt-4 text-sm text-destructive">{statusError}</p>
+                <Alert variant="destructive" className="mt-4">
+                  <AlertTitle>Статус не изменён</AlertTitle>
+                  <AlertDescription>{statusError}</AlertDescription>
+                </Alert>
               ) : null}
             </CardContent>
           </Card>
@@ -379,11 +350,7 @@ export function CaseDetailPage() {
               <dl className="flex flex-col gap-3">
                 <DetailRow
                   label="Статус"
-                  value={
-                    item.recognition
-                      ? recognitionLabels[item.recognition.status]
-                      : "Не запускалось"
-                  }
+                  value={<RecognitionBadge status={item.recognition?.status ?? null} />}
                 />
                 {item.recognition?.error_message ? (
                   <DetailRow label="Ошибка" value={item.recognition.error_message} />
@@ -396,119 +363,46 @@ export function CaseDetailPage() {
                 </pre>
               </div>
               {recognitionError ? (
-                <p className="text-sm text-destructive">{recognitionError}</p>
+                <Alert variant="destructive">
+                  <AlertTitle>Распознавание не выполнено</AlertTitle>
+                  <AlertDescription>{recognitionError}</AlertDescription>
+                </Alert>
               ) : null}
             </CardContent>
           </Card>
 
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Данные постановления</CardTitle>
-              <CardDescription>
-                Поля, которые оператор проверяет и исправляет вручную.
-              </CardDescription>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Данные постановления</CardTitle>
+                  <CardDescription>
+                    Проверьте результат OCR и подтвердите карточку дела.
+                  </CardDescription>
+                </div>
+                <Badge variant="outline">
+                  Заполнено {item.recognized_fields_count} из 9
+                </Badge>
+              </div>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="grid gap-1 text-sm font-medium">
-                  Номер постановления
-                  <Input
-                    value={notice.notice_number ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("notice_number", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Дата постановления
-                  <Input
-                    value={notice.notice_date ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("notice_date", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  УИН
-                  <Input
-                    value={notice.uin ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("uin", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Сумма штрафа
-                  <Input
-                    type="number"
-                    min="0"
-                    value={notice.fine_amount ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("fine_amount", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Статья
-                  <Input
-                    value={notice.article ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("article", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Госномер
-                  <Input
-                    value={notice.vehicle_plate ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("vehicle_plate", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Дата и время нарушения
-                  <Input
-                    value={notice.violation_datetime ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("violation_datetime", event.target.value)
-                    }
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-medium">
-                  Орган
-                  <Input
-                    value={notice.issuing_authority ?? ""}
-                    onChange={(event) =>
-                      updateNoticeField("issuing_authority", event.target.value)
-                    }
-                  />
-                </label>
-              </div>
-              <label className="grid gap-1 text-sm font-medium">
-                Место нарушения
-                <textarea
-                  className="min-h-24 rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                  value={notice.violation_place ?? ""}
-                  onChange={(event) =>
-                    updateNoticeField("violation_place", event.target.value)
-                  }
-                />
-              </label>
-              {noticeError ? (
-                <p className="text-sm text-destructive">{noticeError}</p>
-              ) : null}
-              <div>
-                <Button onClick={handleNoticeSave} disabled={noticeSaving}>
-                  {noticeSaving ? "Сохранение..." : "Сохранить данные"}
-                </Button>
-              </div>
+            <CardContent>
+              <FineNoticeForm
+                notice={notice}
+                original={item.fine_notice ?? emptyFineNotice}
+                saving={noticeSaving}
+                error={noticeError}
+                onChange={setNotice}
+                onSave={handleNoticeSave}
+              />
             </CardContent>
           </Card>
         </div>
       )}
       {deleteError ? (
-        <p className="text-sm text-destructive">{deleteError}</p>
+        <Alert variant="destructive">
+          <AlertTitle>Дело не удалено</AlertTitle>
+          <AlertDescription>{deleteError}</AlertDescription>
+        </Alert>
       ) : null}
     </div>
   )

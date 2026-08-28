@@ -27,7 +27,7 @@ from app.services.document_service import (
     is_supported_document,
 )
 from app.services.ocr_service import create_ocr_provider
-from app.services.recognition_service import RecognitionService
+from app.services.recognition_service import RecognitionService, RecognitionStatus
 from app.services.user_service import UserService
 
 
@@ -76,7 +76,9 @@ async def _save_document(
             mime_type=mime_type,
             local_path=local_path,
         )
-        await RecognitionService(session).create_pending_for_document(case, document)
+        recognition = await RecognitionService(session).create_pending_for_document(
+            case, document
+        )
         if settings.ocr_provider != "none":
             content = (
                 destination.read_bytes()
@@ -85,7 +87,7 @@ async def _save_document(
             )
             if content is not None:
                 raw_content = content.read() if hasattr(content, "read") else content
-                await RecognitionService(session).process_document(
+                recognition = await RecognitionService(session).process_document(
                     case.id,
                     document,
                     raw_content,
@@ -97,11 +99,21 @@ async def _save_document(
         raise
 
     await state.clear()
+    processing_message = "Документ сохранён и ожидает обработки оператором."
+    if recognition.status == RecognitionStatus.RECOGNIZED:
+        processing_message = (
+            "Данные извлечены автоматически. Оператор проверит карточку постановления."
+        )
+    elif recognition.status == RecognitionStatus.FAILED:
+        processing_message = (
+            "Документ сохранён, но автоматическое распознавание не удалось. "
+            "Оператор сможет заполнить карточку вручную."
+        )
+
     await message.answer(
         "Постановление загружено.\n\n"
         f"Дело №{case.id} создано.\n"
-        "Документ принят в обработку. На этой стадии оператор проверит "
-        "распознанные данные постановления в админке.",
+        f"{processing_message}",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text=MY_CASES_TEXT, callback_data="cases:list")]
@@ -116,11 +128,13 @@ async def accept_consent(
 ) -> None:
     if message.from_user is None:
         return
-    user = await UserService(session).get_by_telegram_id(message.from_user.id)
-    if user is None:
-        await state.clear()
-        await message.answer("Начните заново с команды /start.", reply_markup=main_menu_keyboard())
-        return
+    telegram_user = message.from_user
+    user = await UserService(session).get_or_create(
+        telegram_id=telegram_user.id,
+        username=telegram_user.username,
+        first_name=telegram_user.first_name,
+        last_name=telegram_user.last_name,
+    )
 
     await ConsentService(session).accept_current(user)
     await state.set_state(DocumentUpload.waiting_for_file)

@@ -29,6 +29,10 @@ export interface CaseListItem {
   created_at: string
   user: UserSummary
   documents_count: number
+  recognition_status: RecognitionStatus | null
+  notice_number: string | null
+  fine_amount: number | null
+  recognized_fields_count: number
 }
 
 export interface DocumentItem {
@@ -69,6 +73,7 @@ export interface CaseDetail {
   documents: DocumentItem[]
   recognition: RecognitionItem | null
   fine_notice: FineNoticeItem | null
+  recognized_fields_count: number
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -80,10 +85,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      detail?: string | Array<{ msg?: string }>
+    } | null
+    const detail = Array.isArray(payload?.detail)
+      ? payload.detail.map((item) => item.msg).filter(Boolean).join(". ")
+      : payload?.detail
     throw new Error(
-      response.status === 404
-        ? "Запрошенная запись не найдена."
-        : "Backend вернул ошибку. Попробуйте еще раз."
+      detail ||
+        (response.status === 404
+          ? "Запрошенная запись не найдена."
+          : "Backend вернул ошибку. Попробуйте еще раз.")
     )
   }
 

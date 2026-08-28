@@ -81,7 +81,13 @@ class FineNoticeExtractor:
 
     def _plate(self, text: str, *patterns: str) -> str | None:
         value = self._first(text, *patterns)
-        return value.replace(" ", "") if value is not None else None
+        if value is None:
+            return None
+        latin_to_cyrillic = str.maketrans(
+            "ABEKMHOPCTYXabekmhopctyx",
+            "АВЕКМНОРСТУХавекмнорстух",
+        )
+        return value.replace(" ", "").translate(latin_to_cyrillic).upper()
 
     def _amount(self, text: str) -> int | None:
         for pattern in (

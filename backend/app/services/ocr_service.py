@@ -42,11 +42,17 @@ class OcrSpaceProvider(OcrProvider):
         filename: str,
         mime_type: str | None,
     ) -> OcrResult:
-        api_key = (
+        if len(content) > self.settings.ocr_max_file_size_bytes:
+            limit_mb = self.settings.ocr_max_file_size_bytes / 1_000_000
+            raise RuntimeError(
+                f"Файл превышает лимит OCR.space Free ({limit_mb:g} МБ)"
+            )
+        configured_api_key = (
             self.settings.ocr_space_api_key.get_secret_value()
             if self.settings.ocr_space_api_key is not None
-            else "helloworld"
+            else ""
         )
+        api_key = configured_api_key or "helloworld"
         form = aiohttp.FormData()
         form.add_field("language", self.settings.ocr_space_language)
         form.add_field("isOverlayRequired", "false")
@@ -65,7 +71,14 @@ class OcrSpaceProvider(OcrProvider):
                 data=form,
                 headers={"apikey": api_key},
             ) as response:
-                payload = await response.json(content_type=None)
+                if response.status >= 400:
+                    raise RuntimeError(
+                        f"OCR.space временно недоступен (HTTP {response.status})"
+                    )
+                try:
+                    payload = await response.json(content_type=None)
+                except (aiohttp.ContentTypeError, ValueError) as exc:
+                    raise RuntimeError("OCR.space вернул некорректный ответ") from exc
         if payload.get("IsErroredOnProcessing"):
             message = payload.get("ErrorMessage") or payload.get("ErrorDetails")
             if isinstance(message, list):
@@ -78,7 +91,14 @@ class OcrSpaceProvider(OcrProvider):
             if isinstance(result, dict)
         ).strip()
         if not text:
-            raise RuntimeError("OCR returned empty text")
+            page_errors = [
+                result.get("ErrorMessage") or result.get("ErrorDetails")
+                for result in parsed_results
+                if isinstance(result, dict)
+                and (result.get("ErrorMessage") or result.get("ErrorDetails"))
+            ]
+            message = "; ".join(str(item) for item in page_errors if item)
+            raise RuntimeError(message or "OCR.space не смог распознать текст")
         return OcrResult(text=text)
 
 

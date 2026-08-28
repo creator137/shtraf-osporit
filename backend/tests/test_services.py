@@ -14,7 +14,14 @@ from app.services.consent_service import (
 )
 from app.services.document_service import DocumentService
 from app.services.extraction_service import FineNoticeExtractor, FineNoticeFields
-from app.services.ocr_service import DisabledOcrProvider, OcrResult
+import app.services.ocr_service as ocr_service_module
+from app.bot.handlers.cases import _case_detail_text
+from app.config import get_settings
+from app.services.ocr_service import (
+    DisabledOcrProvider,
+    OcrResult,
+    OcrSpaceProvider,
+)
 from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
 
@@ -201,7 +208,7 @@ def test_fine_notice_extractor_reads_gosuslugi_format() -> None:
     assert fields.notice_date == "23.07.2026"
     assert fields.uin == "18810518260723020721"
     assert fields.fine_amount == 3000
-    assert fields.vehicle_plate == "P225MO159"
+    assert fields.vehicle_plate == "Р225МО159"
     assert fields.violation_datetime == "18.07.2026 07:31"
     assert fields.violation_place is not None
     assert "АВТОДОРОГА ВОТКИНСК" in fields.violation_place
@@ -266,6 +273,7 @@ async def test_recognition_service_creates_notice_and_updates_fields(
     )
 
     assert recognition.status is RecognitionStatus.VERIFIED
+    assert case.status is CaseStatus.READY
     assert notice.case_id == case.id
     assert notice.recognition_id == recognition.id
     assert notice.notice_number == "18810177230801000123"
@@ -319,5 +327,72 @@ async def test_recognition_service_processes_document_with_ocr_provider(
     )
 
     assert recognition.status is RecognitionStatus.RECOGNIZED
+    assert case.status is CaseStatus.IN_PROGRESS
     assert recognition.raw_text is not None
     assert "Постановление" in recognition.raw_text
+    loaded_case = await CaseService(db_session).get_for_user(user.id, case.id)
+    assert loaded_case is not None
+    case_card = _case_detail_text(loaded_case)
+    assert "Распознавание: Распознано" in case_card
+    assert "Номер постановления: 18810177230801000123" in case_card
+    assert "Сумма штрафа: 1 500 руб." in case_card
+
+
+@pytest.mark.asyncio
+async def test_ocr_space_provider_rejects_oversized_file() -> None:
+    settings = get_settings().model_copy(update={"ocr_max_file_size_bytes": 3})
+
+    with pytest.raises(RuntimeError, match="превышает лимит"):
+        await OcrSpaceProvider(settings).recognize(
+            b"four", "notice.jpg", "image/jpeg"
+        )
+
+
+@pytest.mark.asyncio
+async def test_ocr_space_provider_reads_successful_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponse:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def json(self, content_type=None):
+            return {
+                "IsErroredOnProcessing": False,
+                "ParsedResults": [
+                    {"ParsedText": "Постановление № 18810177230801000123"}
+                ],
+            }
+
+    class FakeClientSession:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        def post(self, endpoint, data, headers):
+            assert endpoint == OcrSpaceProvider.endpoint
+            assert headers["apikey"]
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        ocr_service_module.aiohttp, "ClientSession", FakeClientSession
+    )
+    settings = get_settings().model_copy(
+        update={"ocr_max_file_size_bytes": 1_000_000}
+    )
+
+    result = await OcrSpaceProvider(settings).recognize(
+        b"image", "notice.jpg", "image/jpeg"
+    )
+
+    assert result.text == "Постановление № 18810177230801000123"

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.main import CHECK_FINE_TEXT, MY_CASES_TEXT, consent_keyboard
 from app.bot.states import DocumentUpload
 from app.db.models import Case, CaseStatus
+from app.db.models.recognition import RecognitionStatus
 from app.services.case_service import CaseService
 from app.services.consent_service import ConsentService, PERSONAL_DATA_CONSENT_TEXT
 from app.services.user_service import UserService
@@ -21,6 +22,13 @@ STATUS_LABELS = {
     CaseStatus.DOCUMENT_UPLOADED: "Документ загружен",
     CaseStatus.IN_PROGRESS: "Документ в работе",
     CaseStatus.READY: "Готов",
+}
+RECOGNITION_LABELS = {
+    RecognitionStatus.PENDING: "Ожидает обработки",
+    RecognitionStatus.PROCESSING: "Распознаётся",
+    RecognitionStatus.RECOGNIZED: "Распознано",
+    RecognitionStatus.FAILED: "Требуется ручная проверка",
+    RecognitionStatus.VERIFIED: "Проверено оператором",
 }
 
 
@@ -51,6 +59,53 @@ def _case_list_keyboard(cases: list[Case]) -> InlineKeyboardMarkup:
             for case in cases
         ]
     )
+
+
+def _case_detail_text(case: Case) -> str:
+    lines = [
+        f"Дело №{case.id}",
+        "",
+        f"Статус: {STATUS_LABELS[case.status]}",
+        f"Создано: {case.created_at:%d.%m.%Y %H:%M}",
+        f"Документов: {len(case.documents)}",
+    ]
+    for document in case.documents:
+        lines.append(f"Документ: {document.original_filename or 'Без имени'}")
+
+    recognitions = [
+        document.recognition
+        for document in case.documents
+        if document.recognition is not None
+    ]
+    if recognitions:
+        recognition = max(recognitions, key=lambda item: item.created_at)
+        lines.append(f"Распознавание: {RECOGNITION_LABELS[recognition.status]}")
+
+    notice = case.fine_notice
+    if notice is not None:
+        fields = [
+            ("Номер постановления", notice.notice_number),
+            ("Дата постановления", notice.notice_date),
+            ("УИН", notice.uin),
+            (
+                "Сумма штрафа",
+                f"{notice.fine_amount:,} руб.".replace(",", " ")
+                if notice.fine_amount is not None
+                else None,
+            ),
+            ("Статья", notice.article),
+            ("Госномер", notice.vehicle_plate),
+            ("Дата нарушения", notice.violation_datetime),
+            ("Место нарушения", notice.violation_place),
+            ("Орган", notice.issuing_authority),
+        ]
+        visible_fields = [(label, value) for label, value in fields if value]
+        if visible_fields:
+            lines.extend(["", "Данные постановления:"])
+            lines.extend(f"{label}: {value}" for label, value in visible_fields)
+        else:
+            lines.extend(["", "Данные постановления пока уточняются."])
+    return "\n".join(lines)
 
 
 @router.message(F.text == CHECK_FINE_TEXT)
@@ -125,13 +180,4 @@ async def show_case(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.message.answer("Дело не найдено.")
         return
 
-    lines = [
-        f"Дело №{case.id}",
-        "",
-        f"Статус: {STATUS_LABELS[case.status]}",
-        f"Создано: {case.created_at:%d.%m.%Y %H:%M}",
-        f"Документов: {len(case.documents)}",
-    ]
-    for document in case.documents:
-        lines.append(f"Документ: {document.original_filename or 'Без имени'}")
-    await callback.message.answer("\n".join(lines))
+    await callback.message.answer(_case_detail_text(case))

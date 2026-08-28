@@ -6,7 +6,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -60,6 +60,10 @@ class CaseListItem(BaseModel):
     created_at: datetime
     user: UserSummary
     documents_count: int
+    recognition_status: RecognitionStatus | None
+    notice_number: str | None
+    fine_amount: int | None
+    recognized_fields_count: int
 
 
 class DocumentItem(BaseModel):
@@ -100,6 +104,7 @@ class CaseDetail(BaseModel):
     documents: list[DocumentItem]
     recognition: RecognitionItem | None
     fine_notice: FineNoticeItem | None
+    recognized_fields_count: int
 
 
 class CaseStatusUpdate(BaseModel):
@@ -107,15 +112,15 @@ class CaseStatusUpdate(BaseModel):
 
 
 class FineNoticeUpdate(BaseModel):
-    notice_number: str | None = None
-    notice_date: str | None = None
-    uin: str | None = None
-    fine_amount: int | None = None
-    article: str | None = None
-    vehicle_plate: str | None = None
-    violation_datetime: str | None = None
-    violation_place: str | None = None
-    issuing_authority: str | None = None
+    notice_number: str | None = Field(default=None, max_length=100)
+    notice_date: str | None = Field(default=None, max_length=50)
+    uin: str | None = Field(default=None, max_length=64)
+    fine_amount: int | None = Field(default=None, ge=0)
+    article: str | None = Field(default=None, max_length=255)
+    vehicle_plate: str | None = Field(default=None, max_length=32)
+    violation_datetime: str | None = Field(default=None, max_length=100)
+    violation_place: str | None = Field(default=None, max_length=2_000)
+    issuing_authority: str | None = Field(default=None, max_length=1_000)
 
 
 def user_summary(user: User) -> UserSummary:
@@ -181,15 +186,13 @@ async def list_users(
 
 @router.get("/cases", response_model=list[CaseListItem])
 async def list_cases(session: AsyncSession = Depends(get_session)) -> list[CaseListItem]:
-    documents_count = (
-        select(func.count(Document.id))
-        .where(Document.case_id == Case.id)
-        .correlate(Case)
-        .scalar_subquery()
-    )
-    rows = await session.execute(
-        select(Case, documents_count.label("documents_count"))
-        .options(selectinload(Case.user))
+    cases = await session.scalars(
+        select(Case)
+        .options(
+            selectinload(Case.user),
+            selectinload(Case.documents).selectinload(Document.recognition),
+            selectinload(Case.fine_notice),
+        )
         .order_by(desc(Case.created_at))
         .limit(100)
     )
@@ -199,9 +202,17 @@ async def list_cases(session: AsyncSession = Depends(get_session)) -> list[CaseL
             status=case.status,
             created_at=case.created_at,
             user=user_summary(case.user),
-            documents_count=document_count,
+            documents_count=len(case.documents),
+            recognition_status=(
+                recognition.status
+                if (recognition := _latest_recognition(case.documents))
+                else None
+            ),
+            notice_number=case.fine_notice.notice_number if case.fine_notice else None,
+            fine_amount=case.fine_notice.fine_amount if case.fine_notice else None,
+            recognized_fields_count=_recognized_fields_count(case.fine_notice),
         )
-        for case, document_count in rows
+        for case in cases
     ]
 
 
@@ -239,6 +250,7 @@ async def get_case(
         ],
         recognition=recognition_item(recognition),
         fine_notice=fine_notice_item(case.fine_notice),
+        recognized_fields_count=_recognized_fields_count(case.fine_notice),
     )
 
 
@@ -450,3 +462,20 @@ def fine_notice_item(notice: FineNotice | None) -> FineNoticeItem | None:
         violation_place=notice.violation_place,
         issuing_authority=notice.issuing_authority,
     )
+
+
+def _recognized_fields_count(notice: FineNotice | None) -> int:
+    if notice is None:
+        return 0
+    fields = (
+        notice.notice_number,
+        notice.notice_date,
+        notice.uin,
+        notice.fine_amount,
+        notice.article,
+        notice.vehicle_plate,
+        notice.violation_datetime,
+        notice.violation_place,
+        notice.issuing_authority,
+    )
+    return sum(value is not None and value != "" for value in fields)
