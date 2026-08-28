@@ -1,6 +1,9 @@
+import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 
 import aiohttp
+import pymupdf
 
 from app.config import Settings
 
@@ -37,6 +40,27 @@ class OcrSpaceProvider(OcrProvider):
         self.settings = settings
 
     async def recognize(
+        self,
+        content: bytes,
+        filename: str,
+        mime_type: str | None,
+    ) -> OcrResult:
+        files = [(content, filename, mime_type)]
+        if (
+            mime_type == "application/pdf"
+            and len(content) > self.settings.ocr_max_file_size_bytes
+        ):
+            files = await asyncio.to_thread(
+                self._render_pdf_pages, content, filename
+            )
+
+        results = [
+            await self._recognize_file(file_content, file_name, file_mime_type)
+            for file_content, file_name, file_mime_type in files
+        ]
+        return OcrResult(text="\n\n".join(result.text for result in results))
+
+    async def _recognize_file(
         self,
         content: bytes,
         filename: str,
@@ -100,6 +124,41 @@ class OcrSpaceProvider(OcrProvider):
             message = "; ".join(str(item) for item in page_errors if item)
             raise RuntimeError(message or "OCR.space не смог распознать текст")
         return OcrResult(text=text)
+
+    def _render_pdf_pages(
+        self, content: bytes, original_filename: str
+    ) -> list[tuple[bytes, str, str]]:
+        try:
+            document = pymupdf.open(stream=content, filetype="pdf")
+        except (pymupdf.FileDataError, RuntimeError) as exc:
+            raise RuntimeError("Не удалось открыть PDF для распознавания") from exc
+
+        with document:
+            if document.page_count == 0:
+                raise RuntimeError("PDF не содержит страниц")
+            if document.page_count > self.settings.ocr_max_pdf_pages:
+                raise RuntimeError(
+                    "PDF содержит слишком много страниц: "
+                    f"максимум {self.settings.ocr_max_pdf_pages}"
+                )
+
+            stem = Path(original_filename).stem or "document"
+            return [
+                (
+                    self._render_page(document[page_index]),
+                    f"{stem}-page-{page_index + 1}.jpg",
+                    "image/jpeg",
+                )
+                for page_index in range(document.page_count)
+            ]
+
+    def _render_page(self, page: pymupdf.Page) -> bytes:
+        for dpi, quality in ((150, 78), (130, 68), (110, 58), (90, 48)):
+            pixmap = page.get_pixmap(dpi=dpi, colorspace=pymupdf.csRGB, alpha=False)
+            rendered = pixmap.tobytes("jpeg", jpg_quality=quality)
+            if len(rendered) <= self.settings.ocr_max_file_size_bytes:
+                return rendered
+        raise RuntimeError("Страницу PDF не удалось сжать до лимита OCR.space")
 
 
 def create_ocr_provider(settings: Settings) -> OcrProvider:

@@ -1,5 +1,6 @@
 import asyncio
 
+import pymupdf
 import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -396,3 +397,64 @@ async def test_ocr_space_provider_reads_successful_response(
     )
 
     assert result.text == "Постановление № 18810177230801000123"
+
+
+@pytest.mark.asyncio
+async def test_ocr_space_provider_renders_oversized_pdf_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests = 0
+
+    class FakeResponse:
+        status = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def json(self, content_type=None):
+            return {
+                "IsErroredOnProcessing": False,
+                "ParsedResults": [{"ParsedText": "Распознанная страница"}],
+            }
+
+    class FakeClientSession:
+        def __init__(self, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        def post(self, endpoint, data, headers):
+            nonlocal requests
+            requests += 1
+            return FakeResponse()
+
+    document = pymupdf.open()
+    for page_number in range(2):
+        page = document.new_page()
+        page.insert_text((72, 72), f"Synthetic notice page {page_number + 1}")
+    content = document.tobytes() + b" " * 1_100_000
+    document.close()
+
+    monkeypatch.setattr(
+        ocr_service_module.aiohttp, "ClientSession", FakeClientSession
+    )
+    settings = get_settings().model_copy(
+        update={
+            "ocr_max_file_size_bytes": 1_000_000,
+            "ocr_max_pdf_pages": 3,
+        }
+    )
+
+    result = await OcrSpaceProvider(settings).recognize(
+        content, "notice.pdf", "application/pdf"
+    )
+
+    assert requests == 2
+    assert result.text == "Распознанная страница\n\nРаспознанная страница"

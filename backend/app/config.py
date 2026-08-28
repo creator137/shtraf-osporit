@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     ocr_space_api_key: SecretStr | None = None
     ocr_space_language: str = "rus"
     ocr_max_file_size_bytes: int = 1_000_000
+    ocr_max_pdf_pages: int = 3
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

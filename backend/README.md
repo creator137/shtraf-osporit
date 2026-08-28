@@ -19,8 +19,9 @@ Python 3.12 backend with aiogram 3, FastAPI, async SQLAlchemy 2, PostgreSQL, Ale
    Set `BOT_TOKEN` to the test bot token. `ADMIN_ORIGIN` defaults to
    `http://localhost:5173`. To enable Stage 2 recognition, set
    `OCR_PROVIDER=ocrspace` and optionally provide `OCR_SPACE_API_KEY`.
-   The configured file limit defaults to 1 MB. Keep `.env` local and never
-   commit it.
+   The configured OCR request limit defaults to 1 MB. Larger PDFs are rendered
+   locally into compressed page images, up to three pages. Keep `.env` local
+   and never commit it.
 
 2. From the repository root, start PostgreSQL:
 
