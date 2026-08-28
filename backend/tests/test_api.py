@@ -8,6 +8,7 @@ import app.services.document_service as document_service_module
 from app.db.models import CaseStatus
 from app.api.admin import get_session
 from app.api.main import app
+from app.config import get_settings
 from app.db.models import Document
 from app.services.consent_service import (
     PERSONAL_DATA_CONSENT_VERSION,
@@ -45,7 +46,7 @@ async def test_delete_is_allowed_by_cors(api_client: AsyncClient) -> None:
     response = await api_client.options(
         "/admin/cases/3",
         headers={
-            "Origin": "http://localhost:5173",
+            "Origin": get_settings().admin_origin,
             "Access-Control-Request-Method": "DELETE",
         },
     )
