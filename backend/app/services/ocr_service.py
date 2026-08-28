@@ -77,32 +77,47 @@ class OcrSpaceProvider(OcrProvider):
             else ""
         )
         api_key = configured_api_key or "helloworld"
-        form = aiohttp.FormData()
-        form.add_field("language", self.settings.ocr_space_language)
-        form.add_field("isOverlayRequired", "false")
-        form.add_field("scale", "true")
-        form.add_field("OCREngine", "2")
-        form.add_field(
-            "file",
-            content,
-            filename=filename,
-            content_type=mime_type or "application/octet-stream",
-        )
         timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as client:
-            async with client.post(
-                self.endpoint,
-                data=form,
-                headers={"apikey": api_key},
-            ) as response:
-                if response.status >= 400:
-                    raise RuntimeError(
-                        f"OCR.space временно недоступен (HTTP {response.status})"
-                    )
-                try:
-                    payload = await response.json(content_type=None)
-                except (aiohttp.ContentTypeError, ValueError) as exc:
-                    raise RuntimeError("OCR.space вернул некорректный ответ") from exc
+        payload = None
+        for attempt in range(3):
+            form = aiohttp.FormData()
+            form.add_field("language", self.settings.ocr_space_language)
+            form.add_field("isOverlayRequired", "false")
+            form.add_field("scale", "true")
+            form.add_field("OCREngine", "2")
+            form.add_field(
+                "file",
+                content,
+                filename=filename,
+                content_type=mime_type or "application/octet-stream",
+            )
+            async with aiohttp.ClientSession(timeout=timeout) as client:
+                async with client.post(
+                    self.endpoint,
+                    data=form,
+                    headers={"apikey": api_key},
+                ) as response:
+                    if response.status == 429 or response.status >= 500:
+                        if attempt < 2:
+                            await asyncio.sleep(2**attempt)
+                            continue
+                        raise RuntimeError(
+                            "OCR.space временно недоступен "
+                            f"(HTTP {response.status})"
+                        )
+                    if response.status >= 400:
+                        raise RuntimeError(
+                            f"OCR.space отклонил запрос (HTTP {response.status})"
+                        )
+                    try:
+                        payload = await response.json(content_type=None)
+                    except (aiohttp.ContentTypeError, ValueError) as exc:
+                        raise RuntimeError(
+                            "OCR.space вернул некорректный ответ"
+                        ) from exc
+                    break
+        if payload is None:
+            raise RuntimeError("OCR.space не вернул ответ")
         if payload.get("IsErroredOnProcessing"):
             message = payload.get("ErrorMessage") or payload.get("ErrorDetails")
             if isinstance(message, list):

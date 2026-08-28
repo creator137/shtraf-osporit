@@ -353,8 +353,12 @@ async def test_ocr_space_provider_rejects_oversized_file() -> None:
 async def test_ocr_space_provider_reads_successful_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    statuses = iter((503, 200))
+    requests = 0
+
     class FakeResponse:
-        status = 200
+        def __init__(self, status: int):
+            self.status = status
 
         async def __aenter__(self):
             return self
@@ -381,13 +385,19 @@ async def test_ocr_space_provider_reads_successful_response(
             return None
 
         def post(self, endpoint, data, headers):
+            nonlocal requests
+            requests += 1
             assert endpoint == OcrSpaceProvider.endpoint
             assert headers["apikey"]
-            return FakeResponse()
+            return FakeResponse(next(statuses))
+
+    async def no_sleep(delay: float) -> None:
+        return None
 
     monkeypatch.setattr(
         ocr_service_module.aiohttp, "ClientSession", FakeClientSession
     )
+    monkeypatch.setattr(ocr_service_module.asyncio, "sleep", no_sleep)
     settings = get_settings().model_copy(
         update={"ocr_max_file_size_bytes": 1_000_000}
     )
@@ -397,6 +407,7 @@ async def test_ocr_space_provider_reads_successful_response(
     )
 
     assert result.text == "Постановление № 18810177230801000123"
+    assert requests == 2
 
 
 @pytest.mark.asyncio
