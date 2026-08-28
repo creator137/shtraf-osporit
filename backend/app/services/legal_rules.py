@@ -263,12 +263,25 @@ RULES = (
 )
 
 
-def get_next_question(answers: dict[str, str]) -> LegalQuestion | None:
+def is_speed_notice(article: str | None) -> bool | None:
+    if article is None or not article.strip():
+        return None
+    return "12.9" in article.replace(" ", "")
+
+
+def get_next_question(
+    answers: dict[str, str], notice_article: str | None = None
+) -> LegalQuestion | None:
     return next(
         (
             question
             for question in QUESTIONS
-            if question.is_relevant(answers) and question.id not in answers
+            if question.is_relevant(answers)
+            and question.id not in answers
+            and not (
+                question.id in {"speed", "speed_docs"}
+                and is_speed_notice(notice_article) is False
+            )
         ),
         None,
     )
@@ -290,7 +303,9 @@ def serialize_rule(rule: LegalRule) -> dict[str, object]:
     return asdict(rule)
 
 
-def evaluate_rules(answers: dict[str, str]) -> list[dict[str, object]]:
+def evaluate_rules(
+    answers: dict[str, str], notice_article: str | None = None
+) -> list[dict[str, object]]:
     matches: list[tuple[str, EvidenceStatus]] = []
     if answers.get("driver") == "other":
         matches.append(("A01", _evidence(answers, "driver_docs")))
@@ -300,7 +315,10 @@ def evaluate_rules(answers: dict[str, str]) -> list[dict[str, object]]:
         matches.append(("A04", EvidenceStatus.NEEDED))
     if answers.get("vehicle_photo") == "different":
         matches.append(("A05", EvidenceStatus.NEEDED))
-    if answers.get("speed") == "dispute":
+    if (
+        answers.get("speed") == "dispute"
+        and is_speed_notice(notice_article) is not False
+    ):
         matches.append(("A07", _evidence(answers, "speed_docs")))
     if answers.get("camera") == "other":
         matches.append(("A11", EvidenceStatus.VERIFY))

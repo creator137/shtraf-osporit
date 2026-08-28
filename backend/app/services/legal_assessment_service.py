@@ -41,11 +41,12 @@ class LegalAssessmentService:
         assessment: LegalAssessment,
         question_id: str,
         value: str,
+        notice_article: str | None = None,
     ) -> LegalQuestion | None:
         if assessment.status is LegalAssessmentStatus.COMPLETED:
             raise ValueError("Assessment is already completed")
 
-        current_question = get_next_question(assessment.answers)
+        current_question = get_next_question(assessment.answers, notice_article)
         if current_question is None or current_question.id != question_id:
             raise ValueError("Answer does not match the current question")
         question = get_question(question_id)
@@ -53,9 +54,9 @@ class LegalAssessmentService:
             raise ValueError("Unknown answer")
 
         assessment.answers = {**assessment.answers, question_id: value}
-        next_question = get_next_question(assessment.answers)
+        next_question = get_next_question(assessment.answers, notice_article)
         if next_question is None:
-            assessment.results = evaluate_rules(assessment.answers)
+            assessment.results = evaluate_rules(assessment.answers, notice_article)
             assessment.status = LegalAssessmentStatus.COMPLETED
             assessment.completed_at = datetime.now(UTC)
         await self.session.flush()

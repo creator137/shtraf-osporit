@@ -207,6 +207,24 @@ def test_legal_questionnaire_branches_on_factual_answer() -> None:
     assert get_next_question({"driver": "other"}).id == "driver_docs"
 
 
+def test_non_speed_notice_skips_speed_questions_and_rule() -> None:
+    answers = {
+        "driver": "owner",
+        "vehicle_photo": "yes",
+        "plate_photo": "yes",
+    }
+
+    next_question = get_next_question(answers, "ч.1 ст.12.16")
+    results = evaluate_rules(
+        {**answers, "speed": "dispute", "speed_docs": "yes"},
+        "ч.1 ст.12.16",
+    )
+
+    assert next_question is not None
+    assert next_question.id == "camera"
+    assert all(result["code"] != "A07" for result in results)
+
+
 @pytest.mark.asyncio
 async def test_legal_assessment_persists_completed_result(
     db_session: AsyncSession,

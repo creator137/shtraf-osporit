@@ -127,7 +127,10 @@ async def start_assessment(callback: CallbackQuery, session: AsyncSession) -> No
         )
         return
 
-    question = get_next_question(assessment.answers)
+    question = get_next_question(
+        assessment.answers,
+        case.fine_notice.article if case.fine_notice else None,
+    )
     if question is not None:
         await _show_question(callback, case.id, question)
 
@@ -147,7 +150,10 @@ async def restart_assessment(callback: CallbackQuery, session: AsyncSession) -> 
         return
     assessment = await LegalAssessmentService(session).start(case.id, restart=True)
 
-    question = get_next_question(assessment.answers)
+    question = get_next_question(
+        assessment.answers,
+        case.fine_notice.article if case.fine_notice else None,
+    )
     if question is not None:
         await _show_question(callback, case.id, question)
 
@@ -177,7 +183,10 @@ async def answer_question(callback: CallbackQuery, session: AsyncSession) -> Non
 
     try:
         next_question = await LegalAssessmentService(session).answer(
-            assessment, question_id, value
+            assessment,
+            question_id,
+            value,
+            case.fine_notice.article if case.fine_notice else None,
         )
     except ValueError:
         await callback.answer("Этот вопрос уже обработан", show_alert=True)
