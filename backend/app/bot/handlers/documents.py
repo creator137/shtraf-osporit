@@ -17,6 +17,7 @@ from app.bot.keyboards.main import (
     main_menu_keyboard,
 )
 from app.bot.states import DocumentUpload
+from app.bot.handlers.legal import legal_start_button
 from app.config import get_settings
 from app.services.consent_service import ConsentService
 from app.services.case_service import CaseService
@@ -116,7 +117,8 @@ async def _save_document(
         f"{processing_message}",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=MY_CASES_TEXT, callback_data="cases:list")]
+                [legal_start_button(case.id)],
+                [InlineKeyboardButton(text=MY_CASES_TEXT, callback_data="cases:list")],
             ]
         ),
     )

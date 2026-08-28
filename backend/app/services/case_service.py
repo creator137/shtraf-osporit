@@ -22,6 +22,7 @@ class CaseService:
             .options(
                 selectinload(Case.documents).selectinload(Document.recognition),
                 selectinload(Case.fine_notice),
+                selectinload(Case.legal_assessment),
             )
             .order_by(desc(Case.created_at))
             .limit(limit)
@@ -35,6 +36,7 @@ class CaseService:
             .options(
                 selectinload(Case.documents).selectinload(Document.recognition),
                 selectinload(Case.fine_notice),
+                selectinload(Case.legal_assessment),
             )
         )
 

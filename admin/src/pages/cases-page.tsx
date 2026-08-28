@@ -32,6 +32,7 @@ import {
 import { useApiResource } from "@/hooks/use-api-resource"
 import { getCases } from "@/lib/api"
 import { formatDate, formatName } from "@/lib/format"
+import { Badge } from "@/components/ui/badge"
 
 export function CasesPage() {
   const navigate = useNavigate()
@@ -162,13 +163,14 @@ export function CasesPage() {
                     <TableHead>OCR</TableHead>
                     <TableHead>Поля</TableHead>
                     <TableHead>Статус</TableHead>
+                    <TableHead>Анкета</TableHead>
                     <TableHead>Документы</TableHead>
                     <TableHead>Штраф</TableHead>
                     <TableHead>Создано</TableHead>
                   </TableRow>
                 </TableHeader>
                 {loading ? (
-                  <TableLoading columns={9} />
+                  <TableLoading columns={10} />
                 ) : (
                   <TableBody>
                     {filteredCases.map((item) => (
@@ -204,6 +206,15 @@ export function CasesPage() {
                         <TableCell>{item.recognized_fields_count} / 9</TableCell>
                         <TableCell>
                           <StatusBadge status={item.status} />
+                        </TableCell>
+                        <TableCell>
+                          {item.legal_assessment_status === "COMPLETED" ? (
+                            <Badge>Завершена</Badge>
+                          ) : item.legal_assessment_status === "IN_PROGRESS" ? (
+                            <Badge variant="secondary">В процессе</Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">Не начата</span>
+                          )}
                         </TableCell>
                         <TableCell>{item.documents_count}</TableCell>
                         <TableCell>

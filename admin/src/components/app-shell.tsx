@@ -20,7 +20,11 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 function PageBreadcrumb() {
   const location = useLocation()
   const isCaseDetail = /^\/cases\/\d+$/.test(location.pathname)
-  const pageName = location.pathname.startsWith("/cases") ? "Дела" : "Пользователи"
+  const pageName = location.pathname.startsWith("/cases")
+    ? "Дела"
+    : location.pathname.startsWith("/legal-rules")
+      ? "Юридические правила"
+      : "Пользователи"
 
   return (
     <Breadcrumb>

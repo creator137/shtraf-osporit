@@ -7,6 +7,8 @@ export type RecognitionStatus =
   | "RECOGNIZED"
   | "FAILED"
   | "VERIFIED"
+export type LegalAssessmentStatus = "IN_PROGRESS" | "COMPLETED"
+export type EvidenceStatus = "AVAILABLE" | "NEEDED" | "VERIFY"
 
 export interface UserSummary {
   telegram_id: number
@@ -33,6 +35,7 @@ export interface CaseListItem {
   notice_number: string | null
   fine_amount: number | null
   recognized_fields_count: number
+  legal_assessment_status: LegalAssessmentStatus | null
 }
 
 export interface DocumentItem {
@@ -64,6 +67,48 @@ export interface FineNoticeItem {
   issuing_authority: string | null
 }
 
+export interface LegalAnswerItem {
+  question_id: string
+  question: string
+  value: string
+  answer: string
+}
+
+export interface LegalRuleItem {
+  code: string
+  title: string
+  direction: string
+  legal_basis: string
+  required_evidence: string[]
+  source_ids: string[]
+}
+
+export interface LegalRuleResult extends LegalRuleItem {
+  evidence_status: EvidenceStatus
+}
+
+export interface LegalAssessmentItem {
+  status: LegalAssessmentStatus
+  rules_version: string
+  answers: LegalAnswerItem[]
+  results: LegalRuleResult[]
+  completed_at: string | null
+  updated_at: string
+}
+
+export interface LegalSourceItem {
+  id: string
+  title: string
+  reference: string
+  effective_note: string
+  document_available: boolean
+}
+
+export interface LegalKnowledgeBase {
+  rules: LegalRuleItem[]
+  sources: LegalSourceItem[]
+}
+
 export interface CaseDetail {
   id: number
   status: CaseStatus
@@ -74,6 +119,7 @@ export interface CaseDetail {
   recognition: RecognitionItem | null
   fine_notice: FineNoticeItem | null
   recognized_fields_count: number
+  legal_assessment: LegalAssessmentItem | null
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -116,6 +162,14 @@ export function getCases(): Promise<CaseListItem[]> {
 
 export function getCase(caseId: number): Promise<CaseDetail> {
   return request(`/admin/cases/${caseId}`)
+}
+
+export function getLegalRules(): Promise<LegalKnowledgeBase> {
+  return request("/admin/legal-rules")
+}
+
+export function getLegalSourceFileUrl(sourceId: string): string {
+  return `${API_URL}/admin/legal-sources/${sourceId}/file`
 }
 
 export function updateCaseStatus(

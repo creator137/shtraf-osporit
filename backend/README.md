@@ -65,5 +65,9 @@ Uploaded documents are stored under `backend/storage/cases/`. This directory is 
 OCR failures do not discard an uploaded document. The case remains available
 for manual field correction in the admin panel.
 
+After upload, the Telegram bot offers the Stage 3 legal questionnaire. Answers
+and deterministic verification directions are stored with the case. The result
+is preliminary and does not generate a complaint or guarantee cancellation.
+
 Production VPS commands and service templates are documented in
 [`deploy/README.md`](../deploy/README.md).

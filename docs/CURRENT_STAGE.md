@@ -1,47 +1,35 @@
-# Stage 2 - Document Processing + Manual Correction
+# Stage 3 - Legal Questionnaire + Rules Engine
 
-Client price for this stage: **6 000 RUB**. This information defines the agreed scope.
+Client price for this stage: **5 000 RUB**. This information defines the agreed scope.
 
-## Included In Stage 2
+## Included In Stage 3
 
-The following work is expected in Stage 2 tasks:
+- A Telegram questionnaire that asks factual questions one at a time.
+- Deterministic selection of possible verification directions from user answers.
+- The first ten MVP situations provided by the client representative.
+- Versioned legal rule definitions and references to the provided legal sources.
+- Storage of questionnaire answers and the resulting rule matches per case.
+- Admin view of the legal rule catalogue, sources, answers, and results.
+- Tests for question branching, rule evaluation, persistence, and API output.
 
-- OCR processing for uploaded fine documents.
-- Storage of raw OCR text.
-- Extraction of basic постановление fields from OCR text.
-- Admin view of recognized text and extracted fields.
-- Manual correction of extracted fields in the admin panel.
-- Case processing status updates for recognition flow.
-- Basic error state when document processing fails.
-- Tests for OCR service boundaries, extraction, API, and admin form behavior.
+## Result Of This Stage
 
-## Basic Fields For Stage 2
+The system uses the recognized fine notice and the user's factual answers to
+identify possible directions for further legal verification and the evidence
+that is available, missing, or must be requested.
 
-- постановление number;
-- постановление date;
-- UIN;
-- fine amount;
-- article / КоАП reference when visible;
-- vehicle plate number when visible;
-- violation date/time when visible;
-- violation place when visible;
-- issuing authority when visible.
+The user does not choose a legal code. The rules engine derives matching codes
+from the answers.
 
-## Excluded From Stage 2
+## Excluded From Stage 3
 
-- Legal Rules Engine.
-- Legal knowledge base.
 - LLM-based legal reasoning.
-- OpenAI, Claude, or Gemini integration.
-- Probability of cancellation.
-- Automatic legal grounds.
-- Complaint generation.
-- DOCX or PDF generation.
-- Payments.
-- ESIA, GIS GMP, or partner API integration.
-- Automatic filing of complaints.
-- Lawyer workflow.
-- Complex roles.
-- Complex analytics.
+- A legal conclusion or guarantee that a fine will be cancelled.
+- Cancellation probability or commercial scoring.
+- Complaint, petition, DOCX, or PDF generation.
+- Automatic image comparison of vehicles or plates.
+- Automatic verification of cameras, calibration, signs, or external registries.
+- Payments, lawyer workflow, ESIA, GIS GMP, and automatic filing.
+- Implementing the full catalogue of 25-50 future scenarios.
 
-> Keep Stage 2 focused on reading the uploaded document and letting the operator correct recognized data.
+> Stage 3 returns possible directions for verification. It does not generate a complaint or replace legal review.

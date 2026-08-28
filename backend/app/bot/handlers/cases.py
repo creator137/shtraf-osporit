@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.main import CHECK_FINE_TEXT, MY_CASES_TEXT, consent_keyboard
 from app.bot.states import DocumentUpload
+from app.bot.handlers.legal import legal_start_button
 from app.db.models import Case, CaseStatus
 from app.db.models.recognition import RecognitionStatus
 from app.services.case_service import CaseService
@@ -180,4 +181,13 @@ async def show_case(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.message.answer("Дело не найдено.")
         return
 
-    await callback.message.answer(_case_detail_text(case))
+    completed = bool(
+        case.legal_assessment
+        and case.legal_assessment.status.value == "COMPLETED"
+    )
+    await callback.message.answer(
+        _case_detail_text(case),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[legal_start_button(case.id, completed=completed)]]
+        ),
+    )

@@ -18,6 +18,8 @@ from app.services.case_service import CaseService
 from app.services.document_service import DocumentService
 from app.services.ocr_service import OcrResult
 from app.services.user_service import UserService
+from app.services.legal_assessment_service import LegalAssessmentService
+from app.services.legal_rules import get_next_question
 
 
 @pytest.fixture
@@ -131,9 +133,52 @@ async def test_case_detail(api_client: AsyncClient, db_session: AsyncSession) ->
     assert "local_path" not in payload["documents"][0]
     assert payload["recognition"] is None
     assert payload["fine_notice"] is None
+    assert payload["legal_assessment"] is None
 
     missing = await api_client.get("/admin/cases/999999999")
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_legal_rules_and_case_assessment_api(
+    api_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    knowledge_response = await api_client.get("/admin/legal-rules")
+    assert knowledge_response.status_code == 200
+    knowledge = knowledge_response.json()
+    assert {rule["code"] for rule in knowledge["rules"]} >= {"A01", "A12", "A17"}
+    assert next(
+        source for source in knowledge["sources"] if source["id"] == "plenum-vs-20"
+    )["document_available"] is True
+
+    user = await UserService(db_session).get_or_create(
+        200_000_020, None, "Assessment", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+    service = LegalAssessmentService(db_session)
+    assessment = await service.start(case.id)
+    answers = {
+        "driver": "sold",
+        "sale_docs": "yes",
+        "vehicle_photo": "yes",
+        "plate_photo": "yes",
+        "speed": "not_speed",
+        "camera": "none",
+        "sign": "none",
+        "duplicate": "no",
+        "emergency": "no",
+    }
+    while (question := get_next_question(assessment.answers)) is not None:
+        await service.answer(assessment, question.id, answers[question.id])
+
+    detail_response = await api_client.get(f"/admin/cases/{case.id}")
+    assert detail_response.status_code == 200
+    legal = detail_response.json()["legal_assessment"]
+    assert legal["status"] == "COMPLETED"
+    assert legal["results"][0]["code"] == "A02"
+    assert next(item for item in legal["answers"] if item["question_id"] == "driver")[
+        "answer"
+    ] == "Автомобиль был продан"
 
 
 @pytest.mark.asyncio

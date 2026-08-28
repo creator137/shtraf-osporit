@@ -25,6 +25,12 @@ from app.services.ocr_service import (
 )
 from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
+from app.services.legal_assessment_service import LegalAssessmentService
+from app.services.legal_rules import (
+    EvidenceStatus,
+    evaluate_rules,
+    get_next_question,
+)
 
 
 @pytest.mark.asyncio
@@ -167,6 +173,73 @@ async def test_document_is_linked_to_case(db_session: AsyncSession) -> None:
     assert loaded_case is not None
     assert loaded_case.status is CaseStatus.DOCUMENT_UPLOADED
     assert [item.id for item in loaded_case.documents] == [document.id]
+
+
+def test_legal_rules_derive_directions_and_evidence_from_answers() -> None:
+    results = evaluate_rules(
+        {
+            "driver": "other",
+            "driver_docs": "yes",
+            "vehicle_photo": "different",
+            "plate_photo": "different",
+            "speed": "dispute",
+            "speed_docs": "no",
+            "camera": "calibration",
+            "sign": "hidden",
+            "sign_docs": "yes",
+            "duplicate": "yes",
+            "duplicate_docs": "yes",
+            "emergency": "yes",
+            "emergency_docs": "no",
+        }
+    )
+
+    by_code = {result["code"]: result for result in results}
+    assert set(by_code) == {"A01", "A04", "A05", "A07", "A09", "A12", "A16", "A17"}
+    assert by_code["A01"]["evidence_status"] == EvidenceStatus.AVAILABLE.value
+    assert by_code["A07"]["evidence_status"] == EvidenceStatus.NEEDED.value
+    assert by_code["A12"]["evidence_status"] == EvidenceStatus.VERIFY.value
+
+
+def test_legal_questionnaire_branches_on_factual_answer() -> None:
+    assert get_next_question({}).id == "driver"
+    assert get_next_question({"driver": "owner"}).id == "vehicle_photo"
+    assert get_next_question({"driver": "other"}).id == "driver_docs"
+
+
+@pytest.mark.asyncio
+async def test_legal_assessment_persists_completed_result(
+    db_session: AsyncSession,
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_020, None, "Legal", "Owner"
+    )
+    case = await CaseService(db_session).create(user.id)
+    service = LegalAssessmentService(db_session)
+    assessment = await service.start(case.id)
+    answers = {
+        "driver": "other",
+        "driver_docs": "yes",
+        "vehicle_photo": "yes",
+        "plate_photo": "yes",
+        "speed": "no",
+        "camera": "none",
+        "sign": "none",
+        "duplicate": "no",
+        "emergency": "no",
+    }
+
+    while (question := get_next_question(assessment.answers)) is not None:
+        await service.answer(assessment, question.id, answers[question.id])
+
+    loaded = await service.get_for_case(case.id)
+    assert loaded is not None
+    assert loaded.status.value == "COMPLETED"
+    assert [result["code"] for result in loaded.results] == ["A01"]
+    assert loaded.completed_at is not None
+
+    with pytest.raises(ValueError, match="already completed"):
+        await service.answer(loaded, "driver", "owner")
 
 
 def test_fine_notice_extractor_reads_basic_fields() -> None:

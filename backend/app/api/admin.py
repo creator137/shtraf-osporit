@@ -19,6 +19,8 @@ from app.db.models import (
     Document,
     DocumentRecognition,
     FineNotice,
+    LegalAssessment,
+    LegalAssessmentStatus,
     RecognitionStatus,
     User,
     UserConsent,
@@ -29,6 +31,14 @@ from app.services.document_service import BACKEND_ROOT, remove_local_document_fi
 from app.services.extraction_service import FineNoticeFields
 from app.services.ocr_service import create_ocr_provider
 from app.services.recognition_service import RecognitionService
+from app.services.legal_rules import (
+    LEGAL_SOURCES,
+    QUESTIONS,
+    RULES,
+    answer_label,
+    get_question,
+    serialize_rule,
+)
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -64,6 +74,7 @@ class CaseListItem(BaseModel):
     notice_number: str | None
     fine_amount: int | None
     recognized_fields_count: int
+    legal_assessment_status: LegalAssessmentStatus | None
 
 
 class DocumentItem(BaseModel):
@@ -95,6 +106,44 @@ class FineNoticeItem(BaseModel):
     issuing_authority: str | None
 
 
+class LegalAnswerItem(BaseModel):
+    question_id: str
+    question: str
+    value: str
+    answer: str
+
+
+class LegalAssessmentItem(BaseModel):
+    status: LegalAssessmentStatus
+    rules_version: str
+    answers: list[LegalAnswerItem]
+    results: list[dict[str, object]]
+    completed_at: datetime | None
+    updated_at: datetime
+
+
+class LegalRuleItem(BaseModel):
+    code: str
+    title: str
+    direction: str
+    legal_basis: str
+    required_evidence: list[str]
+    source_ids: list[str]
+
+
+class LegalSourceItem(BaseModel):
+    id: str
+    title: str
+    reference: str
+    effective_note: str
+    document_available: bool
+
+
+class LegalKnowledgeBase(BaseModel):
+    rules: list[LegalRuleItem]
+    sources: list[LegalSourceItem]
+
+
 class CaseDetail(BaseModel):
     id: int
     status: CaseStatus
@@ -105,6 +154,7 @@ class CaseDetail(BaseModel):
     recognition: RecognitionItem | None
     fine_notice: FineNoticeItem | None
     recognized_fields_count: int
+    legal_assessment: LegalAssessmentItem | None
 
 
 class CaseStatusUpdate(BaseModel):
@@ -192,6 +242,7 @@ async def list_cases(session: AsyncSession = Depends(get_session)) -> list[CaseL
             selectinload(Case.user),
             selectinload(Case.documents).selectinload(Document.recognition),
             selectinload(Case.fine_notice),
+            selectinload(Case.legal_assessment),
         )
         .order_by(desc(Case.created_at))
         .limit(100)
@@ -211,6 +262,9 @@ async def list_cases(session: AsyncSession = Depends(get_session)) -> list[CaseL
             notice_number=case.fine_notice.notice_number if case.fine_notice else None,
             fine_amount=case.fine_notice.fine_amount if case.fine_notice else None,
             recognized_fields_count=_recognized_fields_count(case.fine_notice),
+            legal_assessment_status=(
+                case.legal_assessment.status if case.legal_assessment else None
+            ),
         )
         for case in cases
     ]
@@ -227,6 +281,7 @@ async def get_case(
             selectinload(Case.user),
             selectinload(Case.documents).selectinload(Document.recognition),
             selectinload(Case.fine_notice),
+            selectinload(Case.legal_assessment),
         )
     )
     if case is None:
@@ -251,6 +306,27 @@ async def get_case(
         recognition=recognition_item(recognition),
         fine_notice=fine_notice_item(case.fine_notice),
         recognized_fields_count=_recognized_fields_count(case.fine_notice),
+        legal_assessment=legal_assessment_item(case.legal_assessment),
+    )
+
+
+@router.get("/legal-rules", response_model=LegalKnowledgeBase)
+async def get_legal_rules() -> LegalKnowledgeBase:
+    return LegalKnowledgeBase(
+        rules=[LegalRuleItem(**serialize_rule(rule)) for rule in RULES],
+        sources=[LegalSourceItem(**source) for source in LEGAL_SOURCES],
+    )
+
+
+@router.get("/legal-sources/plenum-vs-20/file", response_model=None)
+async def get_plenum_source_file() -> FileResponse:
+    source_path = BACKEND_ROOT.parent / "docs" / "legal-sources" / "plenum-vs-rf-20-2019.pdf"
+    if not source_path.is_file():
+        raise HTTPException(status_code=404, detail="Legal source file not found")
+    return FileResponse(
+        source_path,
+        media_type="application/pdf",
+        filename="plenum-vs-rf-20-2019.pdf",
     )
 
 
@@ -461,6 +537,41 @@ def fine_notice_item(notice: FineNotice | None) -> FineNoticeItem | None:
         violation_datetime=notice.violation_datetime,
         violation_place=notice.violation_place,
         issuing_authority=notice.issuing_authority,
+    )
+
+
+def legal_assessment_item(
+    assessment: LegalAssessment | None,
+) -> LegalAssessmentItem | None:
+    if assessment is None:
+        return None
+    answers = []
+    ordered_question_ids = [
+        question.id for question in QUESTIONS if question.id in assessment.answers
+    ]
+    ordered_question_ids.extend(
+        question_id
+        for question_id in assessment.answers
+        if question_id not in ordered_question_ids
+    )
+    for question_id in ordered_question_ids:
+        value = assessment.answers[question_id]
+        question = get_question(question_id)
+        answers.append(
+            LegalAnswerItem(
+                question_id=question_id,
+                question=question.text if question else question_id,
+                value=value,
+                answer=answer_label(question_id, value),
+            )
+        )
+    return LegalAssessmentItem(
+        status=assessment.status,
+        rules_version=assessment.rules_version,
+        answers=answers,
+        results=assessment.results,
+        completed_at=assessment.completed_at,
+        updated_at=assessment.updated_at,
     )
 
 

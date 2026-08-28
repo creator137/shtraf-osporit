@@ -15,3 +15,7 @@
 13. Production runs on one small VPS with PostgreSQL bound to localhost.
 14. Caddy serves the admin and proxies the API; Telegram uses polling.
 15. OCR.space is the first OCR provider and is enabled only through environment configuration.
+16. Stage 3 uses deterministic, versioned rules; it does not use an LLM.
+17. The user answers factual questions, and the system derives possible legal verification directions.
+18. Stage 3 results are preliminary directions and evidence requirements, not a legal conclusion or cancellation probability.
+19. The first Stage 3 increment covers the ten client-approved MVP situations only.

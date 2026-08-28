@@ -1,9 +1,11 @@
 # Admin
 
-Stage 2 admin panel built with React, Vite, TypeScript, shadcn/ui, and Open Dashboard patterns.
+Stage 3 admin panel built with React, Vite, TypeScript, shadcn/ui, and Open Dashboard patterns.
 
 The panel provides users, an OCR work queue, case details, source document and
 raw OCR viewing, field completeness, and manual confirmation of extracted data.
+It also shows the versioned legal rule catalogue and each case's questionnaire
+answers and preliminary verification directions.
 
 ## Local Setup
 

@@ -17,6 +17,9 @@ let the operator correct them in the admin panel.
 
 Legal questionnaire, legal knowledge storage, and Legal Rules Engine.
 
+Current focus: first ten factual questionnaire scenarios, deterministic rule
+matching, evidence requirements, and admin visibility.
+
 ## Stage 4
 
 LLM, proposed legal grounds, user confirmation, complaint and petition generation, and DOCX/PDF output.

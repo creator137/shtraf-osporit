@@ -1,4 +1,4 @@
-import { BriefcaseBusinessIcon, UsersIcon } from "lucide-react"
+import { BriefcaseBusinessIcon, ScaleIcon, UsersIcon } from "lucide-react"
 import { NavLink, useLocation } from "react-router-dom"
 
 import {
@@ -15,6 +15,7 @@ import {
 const navigation = [
   { label: "Пользователи", path: "/users", icon: UsersIcon },
   { label: "Дела", path: "/cases", icon: BriefcaseBusinessIcon },
+  { label: "Юридические правила", path: "/legal-rules", icon: ScaleIcon },
 ]
 
 export function AppSidebar() {

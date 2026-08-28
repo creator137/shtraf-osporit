@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell"
 import { CaseDetailPage } from "@/pages/case-detail-page"
 import { CasesPage } from "@/pages/cases-page"
 import { UsersPage } from "@/pages/users-page"
+import { LegalRulesPage } from "@/pages/legal-rules-page"
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="cases" element={<CasesPage />} />
         <Route path="cases/:caseId" element={<CaseDetailPage />} />
+        <Route path="legal-rules" element={<LegalRulesPage />} />
         <Route path="*" element={<Navigate to="/users" replace />} />
       </Route>
     </Routes>

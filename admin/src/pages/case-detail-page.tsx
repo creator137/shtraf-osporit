@@ -10,6 +10,7 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { EmptyState, ErrorState } from "@/components/data-feedback"
 import { FineNoticeForm } from "@/components/fine-notice-form"
+import { LegalAssessmentView } from "@/components/legal-assessment"
 import { RecognitionBadge } from "@/components/recognition-badge"
 import { StatusBadge } from "@/components/status-badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -394,6 +395,18 @@ export function CaseDetailPage() {
                 onChange={setNotice}
                 onSave={handleNoticeSave}
               />
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Юридическая анкета</CardTitle>
+              <CardDescription>
+                Ответы пользователя и определённые системой направления проверки.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <LegalAssessmentView assessment={item.legal_assessment} />
             </CardContent>
           </Card>
         </div>
