@@ -1,0 +1,27 @@
+https://{$SERVER_ADDRESS} {
+    tls {
+        issuer acme https://acme-v02.api.letsencrypt.org/directory {
+            profile shortlived
+        }
+    }
+
+    basic_auth {
+        {$ADMIN_USERNAME} {$ADMIN_PASSWORD_HASH}
+    }
+
+    handle_path /api/* {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle {
+        root * /opt/shtraf-osporit/admin/dist
+        try_files {path} /index.html
+        file_server
+    }
+
+    encode zstd gzip
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy no-referrer
+    }
+}

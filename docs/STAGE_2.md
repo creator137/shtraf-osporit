@@ -107,4 +107,4 @@
 - Ошибка распознавания отображается в админке.
 - Backend-тесты проходят.
 - Админка собирается.
-- Production deployment на Vercel работает.
+- Production deployment на VPS работает.

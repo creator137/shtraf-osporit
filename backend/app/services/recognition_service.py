@@ -49,6 +49,8 @@ class RecognitionService:
         provider: OcrProvider,
     ) -> DocumentRecognition:
         recognition = await self._get_or_create_recognition(document.id)
+        if recognition.status is RecognitionStatus.VERIFIED:
+            raise ValueError("Verified recognition cannot be overwritten")
         recognition.status = RecognitionStatus.PROCESSING
         recognition.error_message = None
         await self.session.flush()

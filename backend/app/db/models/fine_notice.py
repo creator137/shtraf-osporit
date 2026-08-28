@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -13,11 +13,13 @@ if TYPE_CHECKING:
 
 class FineNotice(Base):
     __tablename__ = "fine_notices"
+    __table_args__ = (
+        UniqueConstraint("case_id", name="uq_fine_notices_case_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     case_id: Mapped[int] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"),
-        unique=True,
         index=True,
         nullable=False,
     )

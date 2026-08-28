@@ -364,7 +364,11 @@ export function CaseDetailPage() {
                 <Button
                   variant="outline"
                   onClick={handleRecognize}
-                  disabled={recognizing || item.documents.length === 0}
+                  disabled={
+                    recognizing ||
+                    item.documents.length === 0 ||
+                    item.recognition?.status === "VERIFIED"
+                  }
                 >
                   <FileSearchIcon data-icon="inline-start" />
                   {recognizing ? "Распознавание..." : "Распознать"}

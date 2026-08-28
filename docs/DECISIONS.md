@@ -12,3 +12,6 @@
 10. External OCR and LLM providers will be selected later, when the corresponding stage begins.
 11. Stage 2 starts with OCR, basic field extraction, and manual correction only.
 12. Legal analysis, cancellation probability, and complaint generation remain outside Stage 2.
+13. Production runs on one small VPS with PostgreSQL bound to localhost.
+14. Caddy serves the admin and proxies the API; Telegram uses polling.
+15. OCR.space is the first OCR provider, but OCR remains disabled until explicitly configured.

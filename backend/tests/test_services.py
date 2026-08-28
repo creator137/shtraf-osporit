@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.services.document_service as document_service_module
 from app.db.models import CaseStatus, RecognitionStatus, User, UserConsent
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
@@ -13,7 +14,7 @@ from app.services.consent_service import (
 )
 from app.services.document_service import DocumentService
 from app.services.extraction_service import FineNoticeExtractor, FineNoticeFields
-from app.services.ocr_service import OcrResult
+from app.services.ocr_service import DisabledOcrProvider, OcrResult
 from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
 
@@ -34,12 +35,26 @@ async def test_user_registration_is_idempotent(db_session: AsyncSession) -> None
 
 
 @pytest.mark.asyncio
-async def test_delete_user_removes_account_data(db_session: AsyncSession) -> None:
+async def test_delete_user_removes_account_data(
+    db_session: AsyncSession, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     user = await UserService(db_session).get_or_create(
         100_000_011, "delete_test", "Delete", "User"
     )
     case = await CaseService(db_session).create(user.id)
+    relative_path = "storage/cases/delete-user/document.pdf"
+    file_path = tmp_path / relative_path
+    file_path.parent.mkdir(parents=True)
+    file_path.write_bytes(b"personal document")
+    await DocumentService(db_session).create(
+        case=case,
+        telegram_file_id="delete-user-file",
+        original_filename="document.pdf",
+        mime_type="application/pdf",
+        local_path=relative_path,
+    )
     await ConsentService(db_session).accept_current(user)
+    monkeypatch.setattr(document_service_module, "BACKEND_ROOT", tmp_path)
 
     deleted = await UserService(db_session).delete_by_telegram_id(user.telegram_id)
 
@@ -56,6 +71,7 @@ async def test_delete_user_removes_account_data(db_session: AsyncSession) -> Non
         == 0
     )
     assert await CaseService(db_session).get_for_user(user.id, case.id) is None
+    assert not file_path.exists()
 
 
 @pytest.mark.asyncio
@@ -252,6 +268,17 @@ async def test_recognition_service_creates_notice_and_updates_fields(
     assert recognition.status is RecognitionStatus.VERIFIED
     assert notice.case_id == case.id
     assert notice.recognition_id == recognition.id
+    assert notice.notice_number == "18810177230801000123"
+    assert notice.fine_amount == 1500
+
+    with pytest.raises(ValueError, match="cannot be overwritten"):
+        await service.process_document(
+            case.id,
+            document,
+            b"new content",
+            DisabledOcrProvider(),
+        )
+
     assert notice.notice_number == "18810177230801000123"
     assert notice.fine_amount == 1500
 

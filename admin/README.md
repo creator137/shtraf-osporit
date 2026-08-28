@@ -1,6 +1,6 @@
 # Admin
 
-Stage 1 admin panel built with React, Vite, TypeScript, shadcn/ui, and Open Dashboard patterns.
+Stage 2 admin panel built with React, Vite, TypeScript, shadcn/ui, and Open Dashboard patterns.
 
 The panel provides user and case lists, case details, document viewing, and case status updates.
 

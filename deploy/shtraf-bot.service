@@ -1,0 +1,21 @@
+[Unit]
+Description=Shtraf.Osporit Telegram bot
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=shtraf
+Group=shtraf
+WorkingDirectory=/opt/shtraf-osporit/backend
+EnvironmentFile=/opt/shtraf-osporit/.env
+ExecStart=/opt/shtraf-osporit/backend/.venv/bin/python -m app.bot.main
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/shtraf-osporit/backend/storage
+
+[Install]
+WantedBy=multi-user.target

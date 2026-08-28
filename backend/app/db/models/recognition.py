@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,11 +23,15 @@ class RecognitionStatus(str, Enum):
 
 class DocumentRecognition(Base):
     __tablename__ = "document_recognitions"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id", name="uq_document_recognitions_document_id"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     document_id: Mapped[int] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"),
-        unique=True,
         index=True,
         nullable=False,
     )

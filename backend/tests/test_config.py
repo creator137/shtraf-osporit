@@ -11,5 +11,5 @@ def test_settings_load_database_url() -> None:
     assert settings.database_url.hosts()[0]["host"] == "localhost"
     assert settings.database_url.path == "/database"
     assert settings.admin_origin == "http://localhost:5173"
-    assert settings.ocr_provider == "ocrspace"
+    assert settings.ocr_provider == "none"
     assert settings.ocr_space_language == "rus"

@@ -25,7 +25,7 @@ from app.db.models import (
 )
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
-from app.services.document_service import BACKEND_ROOT
+from app.services.document_service import BACKEND_ROOT, remove_local_document_file
 from app.services.extraction_service import FineNoticeFields
 from app.services.ocr_service import create_ocr_provider
 from app.services.recognition_service import RecognitionService
@@ -304,6 +304,19 @@ async def recognize_case_document(
         raise HTTPException(status_code=404, detail="Case document not found")
 
     document = max(case.documents, key=lambda item: item.created_at)
+    recognition = await session.scalar(
+        select(DocumentRecognition).where(
+            DocumentRecognition.document_id == document.id
+        )
+    )
+    if (
+        recognition is not None
+        and recognition.status is RecognitionStatus.VERIFIED
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Verified recognition cannot be overwritten",
+        )
     content = await document_content(document)
     await RecognitionService(session).process_document(
         case.id,
@@ -327,13 +340,8 @@ async def delete_case(
     if case is None:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    storage_root = (BACKEND_ROOT / "storage").resolve()
     for document in case.documents:
-        if not document.local_path:
-            continue
-        file_path = (BACKEND_ROOT / document.local_path).resolve()
-        if storage_root in file_path.parents:
-            file_path.unlink(missing_ok=True)
+        remove_local_document_file(document)
 
     await session.delete(case)
     await session.commit()

@@ -57,3 +57,6 @@ Python 3.12 backend with aiogram 3, FastAPI, async SQLAlchemy 2, PostgreSQL, Ale
    ```
 
 Uploaded documents are stored under `backend/storage/cases/`. This directory is ignored by Git.
+
+Production VPS commands and service templates are documented in
+[`deploy/README.md`](../deploy/README.md).

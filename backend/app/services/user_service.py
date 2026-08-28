@@ -1,8 +1,10 @@
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from app.db.models import User
+from app.db.models import Case, User
+from app.services.document_service import remove_local_document_file
 
 
 class UserService:
@@ -15,9 +17,16 @@ class UserService:
         )
 
     async def delete_by_telegram_id(self, telegram_id: int) -> bool:
-        user = await self.get_by_telegram_id(telegram_id)
+        user = await self.session.scalar(
+            select(User)
+            .where(User.telegram_id == telegram_id)
+            .options(selectinload(User.cases).selectinload(Case.documents))
+        )
         if user is None:
             return False
+        for case in user.cases:
+            for document in case.documents:
+                remove_local_document_file(document)
         await self.session.delete(user)
         return True
 

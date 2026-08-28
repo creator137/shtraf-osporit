@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.api.admin as admin_api
+import app.services.document_service as document_service_module
 from app.db.models import CaseStatus
 from app.api.admin import get_session
 from app.api.main import app
@@ -210,7 +211,10 @@ async def test_update_case_status(api_client: AsyncClient, db_session: AsyncSess
 
 @pytest.mark.asyncio
 async def test_delete_case_removes_case_documents(
-    api_client: AsyncClient, db_session: AsyncSession, tmp_path
+    api_client: AsyncClient,
+    db_session: AsyncSession,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user = await UserService(db_session).get_or_create(
         200_000_006, None, "Delete", "Owner"
@@ -229,6 +233,7 @@ async def test_delete_case_removes_case_documents(
     )
     original_root = admin_api.BACKEND_ROOT
     admin_api.BACKEND_ROOT = tmp_path
+    monkeypatch.setattr(document_service_module, "BACKEND_ROOT", tmp_path)
     try:
         response = await api_client.delete(f"/admin/cases/{case.id}")
     finally:

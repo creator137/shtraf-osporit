@@ -37,6 +37,22 @@ def build_storage_path(
     return storage_root / "cases" / str(case_id) / f"{uuid4().hex}{suffix}"
 
 
+def remove_local_document_file(document: Document) -> None:
+    if not document.local_path:
+        return
+    file_path = (BACKEND_ROOT / document.local_path).resolve()
+    storage_root = (BACKEND_ROOT / "storage").resolve()
+    if storage_root not in file_path.parents:
+        return
+    file_path.unlink(missing_ok=True)
+    case_directory = file_path.parent
+    if case_directory.parent == storage_root / "cases":
+        try:
+            case_directory.rmdir()
+        except OSError:
+            pass
+
+
 class DocumentService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session

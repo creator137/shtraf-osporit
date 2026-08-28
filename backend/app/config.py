@@ -14,11 +14,9 @@ class Settings(BaseSettings):
     database_url: PostgresDsn
     bot_token: SecretStr | None = None
     telegram_proxy: str | None = None
-    telegram_webhook_secret: SecretStr | None = None
-    redis_url: str | None = None
     document_storage: Literal["local", "telegram"] = "local"
     admin_origin: str = "http://localhost:5173"
-    ocr_provider: Literal["none", "ocrspace"] = "ocrspace"
+    ocr_provider: Literal["none", "ocrspace"] = "none"
     ocr_space_api_key: SecretStr | None = None
     ocr_space_language: str = "rus"
 

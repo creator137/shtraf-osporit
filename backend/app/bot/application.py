@@ -1,7 +1,6 @@
 from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.storage.redis import RedisStorage
 
 from app.bot.handlers import cases, documents, start
 from app.bot.middleware import DatabaseSessionMiddleware
@@ -19,12 +18,7 @@ def create_bot(settings: Settings) -> Bot:
 
 
 def create_dispatcher(settings: Settings) -> Dispatcher:
-    storage = (
-        RedisStorage.from_url(settings.redis_url)
-        if settings.redis_url
-        else MemoryStorage()
-    )
-    dispatcher = Dispatcher(storage=storage)
+    dispatcher = Dispatcher(storage=MemoryStorage())
     dispatcher.update.middleware(DatabaseSessionMiddleware(async_session_factory))
     dispatcher.include_routers(start.router, cases.router, documents.router)
     return dispatcher
