@@ -208,6 +208,16 @@ export function CaseDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button
+            variant="outline"
+            onClick={handleSendQuestionnaire}
+            disabled={questionnaireSending}
+          >
+            <FileSearchIcon data-icon="inline-start" />
+            {questionnaireSending
+              ? "Отправка анкеты..."
+              : "Отправить анкету клиенту"}
+          </Button>
+          <Button
             variant="destructive"
             onClick={handleDelete}
             disabled={deleting}
