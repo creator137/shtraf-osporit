@@ -64,6 +64,7 @@ class DocumentService:
         original_filename: str | None,
         mime_type: str | None,
         local_path: str | None,
+        update_case_status: bool = True,
     ) -> Document:
         document = Document(
             case_id=case.id,
@@ -72,7 +73,8 @@ class DocumentService:
             mime_type=mime_type,
             local_path=local_path,
         )
-        case.status = CaseStatus.DOCUMENT_UPLOADED
+        if update_case_status:
+            case.status = CaseStatus.DOCUMENT_UPLOADED
         self.session.add(document)
         await self.session.flush()
         return document

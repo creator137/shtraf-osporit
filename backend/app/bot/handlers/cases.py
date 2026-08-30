@@ -69,6 +69,20 @@ def _case_list_keyboard(cases: list[Case]) -> InlineKeyboardMarkup:
     )
 
 
+def _case_detail_keyboard(case_id: int, *, completed: bool) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [legal_start_button(case_id, completed=completed)],
+            [
+                InlineKeyboardButton(
+                    text="Загрузить материалы",
+                    callback_data=f"case:add-docs:{case_id}",
+                )
+            ],
+        ]
+    )
+
+
 def _case_detail_text(case: Case) -> str:
     lines = [
         f"Дело №{case.id}",
@@ -145,6 +159,7 @@ async def create_case(
         return
 
     await state.set_state(DocumentUpload.waiting_for_file)
+    await state.set_data({})
     await safe_answer(message, "Отправьте постановление о штрафе в формате PDF или изображения.")
 
 
@@ -193,6 +208,38 @@ async def list_cases_callback(
     )
 
 
+@router.callback_query(F.data.startswith("case:add-docs:"))
+async def add_case_documents(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    await safe_callback_answer(callback)
+    if callback.data is None or callback.message is None:
+        return
+
+    try:
+        case_id = int(callback.data.rsplit(":", maxsplit=1)[-1])
+    except ValueError:
+        return
+
+    user = await UserService(session).get_by_telegram_id(callback.from_user.id)
+    if user is None:
+        return
+    case = await CaseService(session).get_for_user(user.id, case_id)
+    if case is None:
+        await safe_answer(
+            callback.message, "Дело не найдено.", reply_markup=main_menu_keyboard()
+        )
+        return
+
+    await state.set_state(DocumentUpload.waiting_for_file)
+    await state.update_data(additional_case_id=case.id)
+    await safe_answer(
+        callback.message,
+        f"Отправьте дополнительные фото или документы для дела №{case.id}.",
+        reply_markup=main_menu_keyboard(),
+    )
+
+
 @router.callback_query(F.data.startswith("case:"))
 async def show_case(callback: CallbackQuery, session: AsyncSession) -> None:
     await safe_callback_answer(callback)
@@ -221,7 +268,5 @@ async def show_case(callback: CallbackQuery, session: AsyncSession) -> None:
     await safe_answer(
         callback.message,
         _case_detail_text(case),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[legal_start_button(case.id, completed=completed)]]
-        ),
+        reply_markup=_case_detail_keyboard(case.id, completed=completed),
     )

@@ -102,12 +102,13 @@ def parse_date(value: str | None) -> date | None:
     if not value:
         return None
     value = value.strip()
+    date_part = value.split(maxsplit=1)[0].split("T", maxsplit=1)[0].rstrip(",")
     for pattern in ("%d.%m.%Y", "%Y-%m-%d"):
         try:
             if pattern == "%d.%m.%Y":
-                day, month, year = value.split(".")
+                day, month, year = date_part.split(".")
                 return date(int(year), int(month), int(day))
-            return date.fromisoformat(value)
+            return date.fromisoformat(date_part)
         except ValueError:
             continue
     return None

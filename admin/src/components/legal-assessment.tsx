@@ -62,6 +62,11 @@ export function LegalAssessmentView({
         <span className="text-sm text-muted-foreground">
           Версия правил: {assessment.rules_version}
         </span>
+        {assessment.completed_at ? (
+          <span className="text-sm text-muted-foreground">
+            Завершено: {formatDate(assessment.completed_at)}
+          </span>
+        ) : null}
         <span className="text-sm text-muted-foreground">
           Обновлено: {formatDate(assessment.updated_at)}
         </span>

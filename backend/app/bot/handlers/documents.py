@@ -41,7 +41,8 @@ async def _save_document(
     telegram_file_id: str,
     original_filename: str | None,
     mime_type: str | None,
-    ) -> None:
+    case_id: int | None = None,
+) -> None:
     if message.from_user is None:
         return
     user = await UserService(session).get_by_telegram_id(message.from_user.id)
@@ -60,9 +61,18 @@ async def _save_document(
         return
 
     settings = get_settings()
-    case = await CaseService(session).create(user.id)
+    case = (
+        await CaseService(session).get_for_user(user.id, case_id)
+        if case_id is not None
+        else await CaseService(session).create(user.id)
+    )
+    if case is None:
+        await state.clear()
+        await safe_answer(message, "Дело не найдено.", reply_markup=main_menu_keyboard())
+        return
     destination: Path | None = None
     local_path: str | None = None
+    recognition = None
     try:
         if settings.document_storage == "local":
             destination = build_storage_path(case.id, original_filename, mime_type)
@@ -75,11 +85,13 @@ async def _save_document(
             original_filename=original_filename,
             mime_type=mime_type,
             local_path=local_path,
+            update_case_status=case_id is None,
         )
-        recognition = await RecognitionService(session).create_pending_for_document(
-            case, document
-        )
-        if settings.ocr_provider != "none":
+        if case_id is None:
+            recognition = await RecognitionService(session).create_pending_for_document(
+                case, document
+            )
+        if case_id is None and settings.ocr_provider != "none":
             content = (
                 destination.read_bytes()
                 if destination is not None
@@ -99,12 +111,20 @@ async def _save_document(
         raise
 
     await state.clear()
+    if case_id is not None:
+        await safe_answer(
+            message,
+            f"Материалы добавлены в дело №{case.id}.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
     processing_message = "Документ сохранён и ожидает обработки оператором."
-    if recognition.status == RecognitionStatus.RECOGNIZED:
+    if recognition is not None and recognition.status == RecognitionStatus.RECOGNIZED:
         processing_message = (
             "Данные извлечены автоматически. Оператор проверит карточку постановления."
         )
-    elif recognition.status == RecognitionStatus.FAILED:
+    elif recognition is not None and recognition.status == RecognitionStatus.FAILED:
         processing_message = (
             "Документ сохранён, но автоматическое распознавание не удалось. "
             "Оператор сможет заполнить карточку вручную."
@@ -143,6 +163,8 @@ async def _handle_uploaded_notice(
             "После этого можно будет загрузить новое постановление."
         )
         return
+    data = await state.get_data()
+    case_id = data.get("additional_case_id") if isinstance(data, dict) else None
 
     await _save_document(
         message=message,
@@ -151,6 +173,7 @@ async def _handle_uploaded_notice(
         telegram_file_id=telegram_file_id,
         original_filename=original_filename,
         mime_type=mime_type,
+        case_id=case_id if isinstance(case_id, int) else None,
     )
 
 
@@ -169,6 +192,7 @@ async def accept_consent(
     )
 
     await ConsentService(session).accept_current(user)
+    await state.set_data({})
     await state.set_state(DocumentUpload.waiting_for_file)
     await safe_answer(
         message,

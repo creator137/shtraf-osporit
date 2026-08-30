@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -13,7 +14,15 @@ import app.bot.handlers.documents as document_handlers
 from app.bot.handlers.legal import answer_date_question
 from app.bot.states import LegalQuestionnaire
 from app.config import get_settings
-from app.db.models import Case, CaseStatus, RecognitionStatus, User, UserConsent
+from app.db.models import (
+    Case,
+    CaseStatus,
+    Document,
+    DocumentRecognition,
+    RecognitionStatus,
+    User,
+    UserConsent,
+)
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.consent_service import (
@@ -222,6 +231,57 @@ async def test_document_upload_starts_required_questionnaire(
     assert "Когда вы получили постановление" in message.answer.await_args_list[1].args[0]
 
 
+@pytest.mark.asyncio
+async def test_additional_document_upload_uses_existing_case_without_recognition(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_033, None, "Evidence", "Upload"
+    )
+    await ConsentService(db_session).accept_current(user)
+    case = await CaseService(db_session).create(user.id)
+    case.status = CaseStatus.READY
+    monkeypatch.setattr(
+        document_handlers,
+        "get_settings",
+        lambda: SimpleNamespace(document_storage="telegram", ocr_provider="none"),
+    )
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=user.telegram_id),
+        answer=AsyncMock(),
+    )
+    state = AsyncMock()
+
+    await _save_document(
+        message=message,
+        state=state,
+        session=db_session,
+        telegram_file_id="evidence-file-id",
+        original_filename="evidence.jpg",
+        mime_type="image/jpeg",
+        case_id=case.id,
+    )
+
+    cases = await CaseService(db_session).list_for_user(user.id)
+    loaded_case = await CaseService(db_session).get_for_user(user.id, case.id)
+
+    assert [item.id for item in cases] == [case.id]
+    assert loaded_case is not None
+    assert loaded_case.status is CaseStatus.READY
+    document = await db_session.scalar(
+        select(Document).where(Document.case_id == case.id)
+    )
+    assert document is not None
+    recognitions_count = await db_session.scalar(
+        select(func.count(DocumentRecognition.id)).where(
+            DocumentRecognition.document_id == document.id
+        )
+    )
+    assert recognitions_count == 0
+    assert "Материалы добавлены" in message.answer.await_args.args[0]
+
+
 def test_legal_rules_derive_directions_and_evidence_from_answers() -> None:
     results = evaluate_rules(
         {
@@ -287,6 +347,70 @@ def test_extended_stage_three_scenarios_are_evaluated() -> None:
     assert by_code["A10"]["evidence_status"] == EvidenceStatus.NEEDED.value
     assert by_code["A18"]["evidence_status"] == EvidenceStatus.VERIFY.value
 
+FIRST_TEN_SCENARIO_CASES = (
+    ("A01", {"driver": "other", "driver_docs": "yes"}, {"driver": "owner"}, {"A02", "A03"}),
+    ("A02", {"driver": "sold", "sale_docs": "yes"}, {"driver": "owner"}, {"A01", "A03"}),
+    ("A03", {"driver": "lost", "possession_docs": "yes"}, {"driver": "owner"}, {"A01", "A02"}),
+    ("A04", {"plate_photo": "different"}, {"plate_photo": "yes"}, set()),
+    ("A05", {"vehicle_photo": "different"}, {"vehicle_photo": "yes"}, {"A06"}),
+    ("A06", {"vehicle_photo": "no_photo", "plate_photo": "yes"}, {"vehicle_photo": "yes"}, {"A05"}),
+    ("A07", {"speed": "dispute", "speed_docs": "yes"}, {"speed": "no"}, set()),
+    ("A08", {"place_time_match": "wrong_place", "place_time_docs": "yes"}, {"place_time_match": "yes"}, set()),
+    ("A09", {"sign": "absent", "sign_docs": "yes"}, {"sign": "none"}, set()),
+    ("A10", {"marking": "conflict", "marking_docs": "yes"}, {"marking": "none"}, set()),
+)
+
+BASE_NEGATIVE_LEGAL_ANSWERS = {
+    "appeal_received_at": "28.08.2026",
+    "driver": "owner",
+    "vehicle_photo": "yes",
+    "plate_photo": "yes",
+    "place_time_match": "yes",
+    "speed": "no",
+    "camera": "none",
+    "sign": "none",
+    "marking": "none",
+    "owner_data_match": "yes",
+    "previous_resolution": "no",
+    "article_qualification": "no",
+    "duplicate": "no",
+    "emergency": "no",
+}
+
+@pytest.mark.parametrize(
+    ("expected_code", "positive_answers", "negative_answers", "conflicting_codes"),
+    FIRST_TEN_SCENARIO_CASES,
+    ids=[case[0] for case in FIRST_TEN_SCENARIO_CASES],
+)
+def test_first_ten_scenarios_have_positive_and_negative_control_examples(
+    expected_code: str,
+    positive_answers: dict[str, str],
+    negative_answers: dict[str, str],
+    conflicting_codes: set[str],
+) -> None:
+    positive_results = evaluate_rules(
+        {**BASE_NEGATIVE_LEGAL_ANSWERS, **positive_answers},
+        notice_article="ч.2 ст.12.9 КоАП РФ",
+    )
+    negative_results = evaluate_rules(
+        {**BASE_NEGATIVE_LEGAL_ANSWERS, **negative_answers},
+        notice_article="ч.2 ст.12.9 КоАП РФ",
+    )
+
+    positive_codes = {result["code"] for result in positive_results}
+    negative_codes = {result["code"] for result in negative_results}
+
+    assert expected_code in positive_codes
+    assert expected_code not in negative_codes
+    assert positive_codes.isdisjoint(conflicting_codes)
+    assert all(result["required_evidence"] for result in positive_results)
+    assert all(result["evidence_items"] for result in positive_results)
+    assert all(
+        item["status"] in {status.value for status in EvidenceStatus}
+        for result in positive_results
+        for item in result["evidence_items"]
+    )
+
 
 def test_legal_questionnaire_branches_on_factual_answer() -> None:
     assert get_next_question({}).id == "appeal_received_at"
@@ -327,6 +451,13 @@ def test_rules_version_changes_from_september_first() -> None:
     assert select_rules_version_for_date(None) == "2026-08-28"
     assert select_rules_version_for_date(__import__("datetime").date(2026, 8, 31)) == "2026-08-28"
     assert select_rules_version_for_date(__import__("datetime").date(2026, 9, 1)) == "2026-09-01"
+
+def test_parse_date_accepts_ocr_datetime_strings_for_rules_version() -> None:
+    from app.services.legal_rules import parse_date
+
+    assert parse_date("31.08.2026 23:59") == date(2026, 8, 31)
+    assert parse_date("01.09.2026 00:01") == date(2026, 9, 1)
+    assert parse_date("2026-09-01T12:30:00") == date(2026, 9, 1)
 
 
 @pytest.mark.asyncio
