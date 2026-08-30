@@ -22,6 +22,7 @@ dist/
 build/
 .vite/
 *.local
+.vercel/
 
 # Local uploads
 backend/storage/

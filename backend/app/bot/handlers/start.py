@@ -10,6 +10,7 @@ from app.bot.keyboards.main import (
     consent_keyboard,
     main_menu_keyboard,
 )
+from app.bot.utils import safe_answer
 from app.bot.states import DocumentUpload
 from app.services.consent_service import PERSONAL_DATA_CONSENT_TEXT, ConsentService
 from app.services.user_service import UserService
@@ -27,13 +28,15 @@ async def restart(message: Message, state: FSMContext, session: AsyncSession) ->
     deleted = await UserService(session).delete_by_telegram_id(telegram_user.id)
     await state.clear()
     if deleted:
-        await message.answer(
+        await safe_answer(
+            message,
             "Ваш профиль, согласия и дела удалены.\n\n"
             "Чтобы начать заново, отправьте команду /start."
         )
         return
 
-    await message.answer(
+    await safe_answer(
+        message,
         "Профиль и дела не найдены.\n\n"
         "Чтобы начать, отправьте команду /start."
     )
@@ -55,7 +58,8 @@ async def start(message: Message, state: FSMContext, session: AsyncSession) -> N
             last_name=telegram_user.last_name,
         )
         await state.set_state(DocumentUpload.waiting_for_file)
-        await message.answer(
+        await safe_answer(
+            message,
             "С возвращением!\n\n"
             "Отправьте постановление о штрафе PDF-файлом или изображением.",
             reply_markup=main_menu_keyboard(),
@@ -63,7 +67,8 @@ async def start(message: Message, state: FSMContext, session: AsyncSession) -> N
         return
 
     await state.set_state(DocumentUpload.waiting_for_consent)
-    await message.answer(
+    await safe_answer(
+        message,
         PERSONAL_DATA_CONSENT_TEXT,
         reply_markup=consent_keyboard(),
     )
@@ -71,7 +76,8 @@ async def start(message: Message, state: FSMContext, session: AsyncSession) -> N
 
 @router.message(F.text == HELP_TEXT)
 async def help_message(message: Message) -> None:
-    await message.answer(
+    await safe_answer(
+        message,
         f"Нажмите «{CHECK_FINE_TEXT}» и отправьте постановление о штрафе PDF или изображением.\n\n"
         "После загрузки будет создано дело, а документ сохранится для просмотра в админке."
     )

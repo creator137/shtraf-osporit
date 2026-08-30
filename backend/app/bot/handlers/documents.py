@@ -3,8 +3,6 @@ from pathlib import Path
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
     Message,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,12 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.keyboards.main import (
     CONSENT_ACCEPT_TEXT,
     CONSENT_DECLINE_TEXT,
-    MY_CASES_TEXT,
     consent_keyboard,
     main_menu_keyboard,
 )
-from app.bot.states import DocumentUpload
-from app.bot.handlers.legal import legal_start_button
+from app.bot.states import DocumentUpload, LegalQuestionnaire
+from app.bot.handlers.legal import begin_legal_assessment_for_case_message
 from app.config import get_settings
 from app.services.consent_service import ConsentService
 from app.services.case_service import CaseService
@@ -30,6 +27,7 @@ from app.services.document_service import (
 from app.services.ocr_service import create_ocr_provider
 from app.services.recognition_service import RecognitionService, RecognitionStatus
 from app.services.user_service import UserService
+from app.bot.utils import safe_answer
 
 
 router = Router(name="documents")
@@ -43,18 +41,19 @@ async def _save_document(
     telegram_file_id: str,
     original_filename: str | None,
     mime_type: str | None,
-) -> None:
+    ) -> None:
     if message.from_user is None:
         return
     user = await UserService(session).get_by_telegram_id(message.from_user.id)
     if user is None:
         await state.clear()
-        await message.answer("Начните заново с команды /start.")
+        await safe_answer(message, "Начните заново с команды /start.")
         return
 
     if not await ConsentService(session).has_current_consent(user.id):
         await state.set_state(DocumentUpload.waiting_for_consent)
-        await message.answer(
+        await safe_answer(
+            message,
             "Перед загрузкой постановления нужно принять согласие.",
             reply_markup=consent_keyboard(),
         )
@@ -111,16 +110,47 @@ async def _save_document(
             "Оператор сможет заполнить карточку вручную."
         )
 
-    await message.answer(
+    await safe_answer(
+        message,
         "Постановление загружено.\n\n"
         f"Дело №{case.id} создано.\n"
         f"{processing_message}",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [legal_start_button(case.id)],
-                [InlineKeyboardButton(text=MY_CASES_TEXT, callback_data="cases:list")],
-            ]
-        ),
+    )
+    loaded_case = await CaseService(session).get_for_user(user.id, case.id)
+    if loaded_case is None:
+        await safe_answer(
+            message,
+            "Дело создано, но анкету не удалось запустить автоматически. "
+            "Откройте дело через «Мои дела».",
+        )
+        return
+    await begin_legal_assessment_for_case_message(message, loaded_case, state, session)
+
+
+async def _handle_uploaded_notice(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    telegram_file_id: str,
+    original_filename: str | None,
+    mime_type: str | None,
+) -> None:
+    current_state = await state.get_state()
+    if current_state == LegalQuestionnaire.waiting_for_answer.state:
+        await safe_answer(
+            message,
+            "Сначала ответьте на текущий вопрос анкеты.\n\n"
+            "После этого можно будет загрузить новое постановление."
+        )
+        return
+
+    await _save_document(
+        message=message,
+        state=state,
+        session=session,
+        telegram_file_id=telegram_file_id,
+        original_filename=original_filename,
+        mime_type=mime_type,
     )
 
 
@@ -140,7 +170,8 @@ async def accept_consent(
 
     await ConsentService(session).accept_current(user)
     await state.set_state(DocumentUpload.waiting_for_file)
-    await message.answer(
+    await safe_answer(
+        message,
         "Согласие сохранено. Теперь отправьте постановление о штрафе в формате PDF или изображения.",
         reply_markup=main_menu_keyboard(),
     )
@@ -149,7 +180,8 @@ async def accept_consent(
 @router.message(DocumentUpload.waiting_for_consent, F.text == CONSENT_DECLINE_TEXT)
 async def decline_consent(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer(
+    await safe_answer(
+        message,
         "Без согласия загрузить постановление и создать дело нельзя.",
         reply_markup=main_menu_keyboard(),
     )
@@ -157,10 +189,10 @@ async def decline_consent(message: Message, state: FSMContext) -> None:
 
 @router.message(DocumentUpload.waiting_for_consent)
 async def unsupported_consent_answer(message: Message) -> None:
-    await message.answer("Выберите «Согласен» или «Не согласен» на клавиатуре.")
+    await safe_answer(message, "Выберите «Согласен» или «Не согласен» на клавиатуре.")
 
 
-@router.message(DocumentUpload.waiting_for_file, F.document)
+@router.message(F.document)
 async def receive_document(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
@@ -168,9 +200,9 @@ async def receive_document(
     if document is None:
         return
     if not is_supported_document(document.file_name, document.mime_type):
-        await message.answer(SUPPORTED_TYPES_MESSAGE)
+        await safe_answer(message, SUPPORTED_TYPES_MESSAGE)
         return
-    await _save_document(
+    await _handle_uploaded_notice(
         message=message,
         state=state,
         session=session,
@@ -180,12 +212,12 @@ async def receive_document(
     )
 
 
-@router.message(DocumentUpload.waiting_for_file, F.photo)
+@router.message(F.photo)
 async def receive_photo(
     message: Message, state: FSMContext, session: AsyncSession
 ) -> None:
     photo = message.photo[-1]
-    await _save_document(
+    await _handle_uploaded_notice(
         message=message,
         state=state,
         session=session,
@@ -197,4 +229,4 @@ async def receive_photo(
 
 @router.message(DocumentUpload.waiting_for_file)
 async def unsupported_file(message: Message) -> None:
-    await message.answer(SUPPORTED_TYPES_MESSAGE)
+    await safe_answer(message, SUPPORTED_TYPES_MESSAGE)

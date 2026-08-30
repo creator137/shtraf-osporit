@@ -83,8 +83,21 @@ export interface LegalRuleItem {
   source_ids: string[]
 }
 
+export interface LegalEvidenceItem {
+  name: string
+  status: EvidenceStatus
+}
+
 export interface LegalRuleResult extends LegalRuleItem {
   evidence_status: EvidenceStatus
+  evidence_items: LegalEvidenceItem[]
+  reasons: string[]
+}
+
+export interface LegalVersionItem {
+  version: string
+  effective_from: string
+  title: string
 }
 
 export interface LegalAssessmentItem {
@@ -106,6 +119,7 @@ export interface LegalSourceItem {
 
 export interface LegalKnowledgeBase {
   rules: LegalRuleItem[]
+  versions: LegalVersionItem[]
   sources: LegalSourceItem[]
 }
 
@@ -200,6 +214,10 @@ export function recognizeCaseDocument(caseId: number): Promise<CaseDetail> {
 
 export function deleteCase(caseId: number): Promise<void> {
   return request(`/admin/cases/${caseId}`, { method: "DELETE" })
+}
+
+export function sendQuestionnaire(caseId: number): Promise<void> {
+  return request(`/admin/cases/${caseId}/send-questionnaire`, { method: "POST" })
 }
 
 export function getDocumentFileUrl(documentId: number): string {

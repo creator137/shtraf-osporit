@@ -6,7 +6,7 @@ Client price for this stage: **5 000 RUB**. This information defines the agreed 
 
 - A Telegram questionnaire that asks factual questions one at a time.
 - Deterministic selection of possible verification directions from user answers.
-- The first ten MVP situations provided by the client representative.
+- The approved Stage 3 verification situations provided by the client representative.
 - Versioned legal rule definitions and references to the provided legal sources.
 - Storage of questionnaire answers and the resulting rule matches per case.
 - Admin view of the legal rule catalogue, sources, answers, and results.
@@ -30,6 +30,6 @@ from the answers.
 - Automatic image comparison of vehicles or plates.
 - Automatic verification of cameras, calibration, signs, or external registries.
 - Payments, lawyer workflow, ESIA, GIS GMP, and automatic filing.
-- Implementing the full catalogue of 25-50 future scenarios.
+- Implementing the full future catalogue beyond the approved Stage 3 verification situations.
 
 > Stage 3 returns possible directions for verification. It does not generate a complaint or replace legal review.

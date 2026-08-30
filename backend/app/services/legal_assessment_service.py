@@ -10,6 +10,9 @@ from app.services.legal_rules import (
     evaluate_rules,
     get_next_question,
     get_question,
+    normalize_date_answer,
+    parse_date,
+    select_rules_version_for_date,
 )
 
 
@@ -42,22 +45,62 @@ class LegalAssessmentService:
         question_id: str,
         value: str,
         notice_article: str | None = None,
+        ocr_text: str | None = None,
+        violation_place: str | None = None,
     ) -> LegalQuestion | None:
         if assessment.status is LegalAssessmentStatus.COMPLETED:
             raise ValueError("Assessment is already completed")
 
-        current_question = get_next_question(assessment.answers, notice_article)
+        current_question = get_next_question(
+            assessment.answers,
+            notice_article,
+            ocr_text,
+            violation_place,
+        )
         if current_question is None or current_question.id != question_id:
             raise ValueError("Answer does not match the current question")
         question = get_question(question_id)
         if question is None or value not in {option.value for option in question.options}:
-            raise ValueError("Unknown answer")
+            if question.input_kind != "choice" and value.strip():
+                pass
+            else:
+                raise ValueError("Unknown answer")
 
-        assessment.answers = {**assessment.answers, question_id: value}
-        next_question = get_next_question(assessment.answers, notice_article)
+        normalized_value = value
+        if question.input_kind == "date":
+            normalized_value = normalize_date_answer(value) or value.strip()
+            if parse_date(normalized_value) is None:
+                raise ValueError("Invalid date format")
+
+        assessment.answers = {**assessment.answers, question_id: normalized_value}
+        next_question = get_next_question(
+            assessment.answers,
+            notice_article,
+            ocr_text,
+            violation_place,
+        )
         if next_question is None:
-            assessment.results = evaluate_rules(assessment.answers, notice_article)
+            assessment.results = evaluate_rules(
+                assessment.answers,
+                notice_article,
+                ocr_text,
+                violation_place,
+            )
             assessment.status = LegalAssessmentStatus.COMPLETED
             assessment.completed_at = datetime.now(UTC)
         await self.session.flush()
         return next_question
+
+    async def start_with_context(
+        self,
+        case_id: int,
+        *,
+        violation_datetime: str | None = None,
+        notice_date: str | None = None,
+        restart: bool = False,
+    ) -> LegalAssessment:
+        assessment = await self.start(case_id, restart=restart)
+        violation_date = parse_date(violation_datetime) or parse_date(notice_date)
+        assessment.rules_version = select_rules_version_for_date(violation_date)
+        await self.session.flush()
+        return assessment

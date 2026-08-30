@@ -18,4 +18,4 @@
 16. Stage 3 uses deterministic, versioned rules; it does not use an LLM.
 17. The user answers factual questions, and the system derives possible legal verification directions.
 18. Stage 3 results are preliminary directions and evidence requirements, not a legal conclusion or cancellation probability.
-19. The first Stage 3 increment covers the ten client-approved MVP situations only.
+19. Stage 3 covers the approved deterministic verification situations for this stage.

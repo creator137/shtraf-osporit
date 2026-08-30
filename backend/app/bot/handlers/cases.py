@@ -8,14 +8,21 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards.main import CHECK_FINE_TEXT, MY_CASES_TEXT, consent_keyboard
-from app.bot.states import DocumentUpload
+from app.bot.states import DocumentUpload, LegalQuestionnaire
+from app.bot.keyboards.main import (
+    CHECK_FINE_TEXT,
+    MY_CASES_TEXT,
+    consent_keyboard,
+    main_menu_keyboard,
+)
 from app.bot.handlers.legal import legal_start_button
+from app.bot.utils import safe_answer, safe_callback_answer
 from app.db.models import Case, CaseStatus
 from app.db.models.recognition import RecognitionStatus
 from app.services.case_service import CaseService
 from app.services.consent_service import ConsentService, PERSONAL_DATA_CONSENT_TEXT
 from app.services.user_service import UserService
+from app.services.legal_rules import get_question
 
 
 router = Router(name="cases")
@@ -115,31 +122,49 @@ async def create_case(
 ) -> None:
     user = await _current_user(message, session)
     if user is None:
-        await message.answer("Сначала отправьте команду /start.")
+        await safe_answer(message, "Сначала отправьте команду /start.")
+        return
+
+    if await state.get_state() == LegalQuestionnaire.waiting_for_answer.state:
+        data = await state.get_data()
+        question = get_question(str(data.get("question_id") or ""))
+        if question is not None:
+            await safe_answer(
+                message,
+                "Сначала ответьте на текущий вопрос анкеты.\n\n"
+                f"Юридическая анкета по делу №{data.get('case_id')}\n\n"
+                f"{question.text}"
+            )
+            return
+        await safe_answer(message, "Сначала ответьте на текущий вопрос анкеты.")
         return
 
     if not await ConsentService(session).has_current_consent(user.id):
         await state.set_state(DocumentUpload.waiting_for_consent)
-        await message.answer(PERSONAL_DATA_CONSENT_TEXT, reply_markup=consent_keyboard())
+        await safe_answer(message, PERSONAL_DATA_CONSENT_TEXT, reply_markup=consent_keyboard())
         return
 
     await state.set_state(DocumentUpload.waiting_for_file)
-    await message.answer("Отправьте постановление о штрафе в формате PDF или изображения.")
+    await safe_answer(message, "Отправьте постановление о штрафе в формате PDF или изображения.")
 
 
 @router.message(F.text == MY_CASES_TEXT)
 async def list_cases(message: Message, session: AsyncSession) -> None:
     user = await _current_user(message, session)
     if user is None:
-        await message.answer("Сначала отправьте команду /start.")
+        await safe_answer(message, "Сначала отправьте команду /start.")
         return
 
     cases = await CaseService(session).list_for_user(user.id)
     if not cases:
-        await message.answer("У вас пока нет дел.")
+        await safe_answer(
+            message, "У вас пока нет дел.", reply_markup=main_menu_keyboard()
+        )
         return
 
-    await message.answer(
+    await safe_answer(message, "Главное меню доступно ниже.", reply_markup=main_menu_keyboard())
+    await safe_answer(
+        message,
         _case_list_text(cases), reply_markup=_case_list_keyboard(cases)
     )
 
@@ -148,23 +173,29 @@ async def list_cases(message: Message, session: AsyncSession) -> None:
 async def list_cases_callback(
     callback: CallbackQuery, session: AsyncSession
 ) -> None:
-    await callback.answer()
+    await safe_callback_answer(callback)
     user = await UserService(session).get_by_telegram_id(callback.from_user.id)
     if user is None or callback.message is None:
         return
 
     cases = await CaseService(session).list_for_user(user.id)
     if not cases:
-        await callback.message.answer("У вас пока нет дел.")
+        await safe_answer(
+            callback.message, "У вас пока нет дел.", reply_markup=main_menu_keyboard()
+        )
         return
-    await callback.message.answer(
+    await safe_answer(
+        callback.message, "Главное меню доступно ниже.", reply_markup=main_menu_keyboard()
+    )
+    await safe_answer(
+        callback.message,
         _case_list_text(cases), reply_markup=_case_list_keyboard(cases)
     )
 
 
 @router.callback_query(F.data.startswith("case:"))
 async def show_case(callback: CallbackQuery, session: AsyncSession) -> None:
-    await callback.answer()
+    await safe_callback_answer(callback)
     if callback.data is None or callback.message is None:
         return
 
@@ -178,14 +209,17 @@ async def show_case(callback: CallbackQuery, session: AsyncSession) -> None:
         return
     case = await CaseService(session).get_for_user(user.id, case_id)
     if case is None:
-        await callback.message.answer("Дело не найдено.")
+        await safe_answer(
+            callback.message, "Дело не найдено.", reply_markup=main_menu_keyboard()
+        )
         return
 
     completed = bool(
         case.legal_assessment
         and case.legal_assessment.status.value == "COMPLETED"
     )
-    await callback.message.answer(
+    await safe_answer(
+        callback.message,
         _case_detail_text(case),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[[legal_start_button(case.id, completed=completed)]]

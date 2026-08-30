@@ -1,12 +1,19 @@
 import asyncio
-
-import pymupdf
-import pytest
-from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import app.services.document_service as document_service_module
-from app.db.models import CaseStatus, RecognitionStatus, User, UserConsent
+import app.services.ocr_service as ocr_service_module
+import pymupdf
+import pytest
+from app.bot.handlers.cases import _case_detail_text
+from app.bot.handlers.cases import create_case
+from app.bot.handlers.documents import _save_document
+import app.bot.handlers.documents as document_handlers
+from app.bot.handlers.legal import answer_date_question
+from app.bot.states import LegalQuestionnaire
+from app.config import get_settings
+from app.db.models import Case, CaseStatus, RecognitionStatus, User, UserConsent
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.consent_service import (
@@ -15,9 +22,13 @@ from app.services.consent_service import (
 )
 from app.services.document_service import DocumentService
 from app.services.extraction_service import FineNoticeExtractor, FineNoticeFields
-import app.services.ocr_service as ocr_service_module
-from app.bot.handlers.cases import _case_detail_text
-from app.config import get_settings
+from app.services.legal_assessment_service import LegalAssessmentService
+from app.services.legal_rules import (
+    EvidenceStatus,
+    evaluate_rules,
+    get_next_question,
+    select_rules_version_for_date,
+)
 from app.services.ocr_service import (
     DisabledOcrProvider,
     OcrResult,
@@ -25,12 +36,8 @@ from app.services.ocr_service import (
 )
 from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
-from app.services.legal_assessment_service import LegalAssessmentService
-from app.services.legal_rules import (
-    EvidenceStatus,
-    evaluate_rules,
-    get_next_question,
-)
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio
@@ -175,18 +182,64 @@ async def test_document_is_linked_to_case(db_session: AsyncSession) -> None:
     assert [item.id for item in loaded_case.documents] == [document.id]
 
 
+@pytest.mark.asyncio
+async def test_document_upload_starts_required_questionnaire(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_032, None, "Upload", "Questionnaire"
+    )
+    await ConsentService(db_session).accept_current(user)
+    monkeypatch.setattr(
+        document_handlers,
+        "get_settings",
+        lambda: SimpleNamespace(document_storage="telegram", ocr_provider="none"),
+    )
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=user.telegram_id),
+        answer=AsyncMock(),
+    )
+    state = AsyncMock()
+
+    await _save_document(
+        message=message,
+        state=state,
+        session=db_session,
+        telegram_file_id="telegram-file-id",
+        original_filename="notice.pdf",
+        mime_type="application/pdf",
+    )
+
+    cases = await CaseService(db_session).list_for_user(user.id)
+    assessment = await LegalAssessmentService(db_session).get_for_case(cases[0].id)
+
+    assert assessment is not None
+    assert assessment.status.value == "IN_PROGRESS"
+    assert state.set_state.await_args.args[0] == LegalQuestionnaire.waiting_for_answer
+    assert message.answer.await_count == 2
+    assert "Дело №" in message.answer.await_args_list[0].args[0]
+    assert "Когда вы получили постановление" in message.answer.await_args_list[1].args[0]
+
+
 def test_legal_rules_derive_directions_and_evidence_from_answers() -> None:
     results = evaluate_rules(
         {
+            "appeal_received_at": "28.08.2026",
             "driver": "other",
             "driver_docs": "yes",
             "vehicle_photo": "different",
             "plate_photo": "different",
+            "place_time_match": "yes",
             "speed": "dispute",
             "speed_docs": "no",
             "camera": "calibration",
             "sign": "hidden",
             "sign_docs": "yes",
+            "marking": "none",
+            "owner_data_match": "yes",
+            "previous_resolution": "no",
+            "article_qualification": "no",
             "duplicate": "yes",
             "duplicate_docs": "yes",
             "emergency": "yes",
@@ -199,19 +252,64 @@ def test_legal_rules_derive_directions_and_evidence_from_answers() -> None:
     assert by_code["A01"]["evidence_status"] == EvidenceStatus.AVAILABLE.value
     assert by_code["A07"]["evidence_status"] == EvidenceStatus.NEEDED.value
     assert by_code["A12"]["evidence_status"] == EvidenceStatus.VERIFY.value
+    assert by_code["A01"]["evidence_items"][0]["status"] == EvidenceStatus.AVAILABLE.value
+
+
+def test_extended_stage_three_scenarios_are_evaluated() -> None:
+    results = evaluate_rules(
+        {
+            "appeal_received_at": "28.08.2026",
+            "driver": "lost",
+            "possession_docs": "yes",
+            "vehicle_photo": "no_photo",
+            "plate_photo": "no_photo",
+            "place_time_match": "wrong_place",
+            "place_time_docs": "yes",
+            "camera": "none",
+            "sign": "none",
+            "marking": "conflict",
+            "marking_docs": "no",
+            "owner_data_match": "wrong",
+            "owner_data_docs": "yes",
+            "previous_resolution": "cancelled",
+            "previous_resolution_docs": "yes",
+            "article_qualification": "yes",
+            "duplicate": "no",
+            "emergency": "no",
+        },
+        notice_article="ч.1 ст.12.16",
+    )
+
+    by_code = {result["code"]: result for result in results}
+    assert set(by_code) == {"A03", "A06", "A08", "A10", "A14", "A15", "A18"}
+    assert by_code["A03"]["evidence_status"] == EvidenceStatus.AVAILABLE.value
+    assert by_code["A06"]["evidence_status"] == EvidenceStatus.VERIFY.value
+    assert by_code["A10"]["evidence_status"] == EvidenceStatus.NEEDED.value
+    assert by_code["A18"]["evidence_status"] == EvidenceStatus.VERIFY.value
 
 
 def test_legal_questionnaire_branches_on_factual_answer() -> None:
-    assert get_next_question({}).id == "driver"
-    assert get_next_question({"driver": "owner"}).id == "vehicle_photo"
-    assert get_next_question({"driver": "other"}).id == "driver_docs"
+    assert get_next_question({}).id == "appeal_received_at"
+    answers = {"appeal_received_at": "28.08.2026"}
+    assert get_next_question(answers).id == "driver"
+    assert get_next_question({**answers, "driver": "owner"}).id == "vehicle_photo"
+    assert get_next_question({**answers, "driver": "other"}).id == "driver_docs"
+
+
+def test_overdue_appeal_questions_are_asked_first() -> None:
+    question = get_next_question({"appeal_received_at": "10.08.2026"})
+
+    assert question is not None
+    assert question.id == "appeal_delay_reason"
 
 
 def test_non_speed_notice_skips_speed_questions_and_rule() -> None:
     answers = {
+        "appeal_received_at": "28.08.2026",
         "driver": "owner",
         "vehicle_photo": "yes",
         "plate_photo": "yes",
+        "place_time_match": "yes",
     }
 
     next_question = get_next_question(answers, "ч.1 ст.12.16")
@@ -225,6 +323,12 @@ def test_non_speed_notice_skips_speed_questions_and_rule() -> None:
     assert all(result["code"] != "A07" for result in results)
 
 
+def test_rules_version_changes_from_september_first() -> None:
+    assert select_rules_version_for_date(None) == "2026-08-28"
+    assert select_rules_version_for_date(__import__("datetime").date(2026, 8, 31)) == "2026-08-28"
+    assert select_rules_version_for_date(__import__("datetime").date(2026, 9, 1)) == "2026-09-01"
+
+
 @pytest.mark.asyncio
 async def test_legal_assessment_persists_completed_result(
     db_session: AsyncSession,
@@ -236,6 +340,7 @@ async def test_legal_assessment_persists_completed_result(
     service = LegalAssessmentService(db_session)
     assessment = await service.start(case.id)
     answers = {
+        "appeal_received_at": "28.08.2026",
         "driver": "other",
         "driver_docs": "yes",
         "vehicle_photo": "yes",
@@ -243,6 +348,11 @@ async def test_legal_assessment_persists_completed_result(
         "speed": "no",
         "camera": "none",
         "sign": "none",
+        "place_time_match": "yes",
+        "marking": "none",
+        "owner_data_match": "yes",
+        "previous_resolution": "no",
+        "article_qualification": "no",
         "duplicate": "no",
         "emergency": "no",
     }
@@ -258,6 +368,70 @@ async def test_legal_assessment_persists_completed_result(
 
     with pytest.raises(ValueError, match="already completed"):
         await service.answer(loaded, "driver", "owner")
+
+
+@pytest.mark.asyncio
+async def test_check_fine_button_does_not_restart_questionnaire(
+    db_session: AsyncSession,
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_030, None, "Legal", "Flow"
+    )
+    case = await CaseService(db_session).create(user.id)
+    assessment = await LegalAssessmentService(db_session).start(case.id)
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=user.telegram_id),
+        answer=AsyncMock(),
+    )
+    state = AsyncMock()
+    state.get_state.return_value = LegalQuestionnaire.waiting_for_answer.state
+    state.get_data.return_value = {
+        "case_id": case.id,
+        "question_id": "appeal_received_at",
+    }
+
+    before = await db_session.scalar(select(func.count(Case.id)).where(Case.user_id == user.id))
+
+    await create_case(message, state, db_session)
+
+    after = await db_session.scalar(select(func.count(Case.id)).where(Case.user_id == user.id))
+
+    assert before == after == 1
+    assert message.answer.await_count == 1
+    assert "Сначала ответьте на текущий вопрос анкеты" in message.answer.await_args.args[0]
+    assert assessment.status.value == "IN_PROGRESS"
+
+
+@pytest.mark.asyncio
+async def test_date_answer_uses_telegram_user_to_continue_questionnaire(
+    db_session: AsyncSession,
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_031, None, "Legal", "Date"
+    )
+    case = await CaseService(db_session).create(user.id)
+    assessment = await LegalAssessmentService(db_session).start(case.id)
+
+    message = SimpleNamespace(
+        from_user=SimpleNamespace(id=user.telegram_id),
+        text="29.08.2026",
+        answer=AsyncMock(),
+    )
+    state = AsyncMock()
+    state.get_data.return_value = {
+        "case_id": case.id,
+        "question_id": "appeal_received_at",
+    }
+
+    await answer_date_question(message, state, db_session)
+
+    assert assessment.answers["appeal_received_at"] == "29.08.2026"
+    assert message.answer.await_count == 1
+    assert "Дело не найдено" not in message.answer.await_args.args[0]
+    assert "Юридическая анкета" in message.answer.await_args.args[0]
+
+
 
 
 def test_fine_notice_extractor_reads_basic_fields() -> None:

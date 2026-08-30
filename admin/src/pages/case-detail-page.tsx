@@ -39,6 +39,7 @@ import {
   getCase,
   getDocumentFileUrl,
   recognizeCaseDocument,
+  sendQuestionnaire,
   updateCaseStatus,
   updateFineNotice,
   type CaseStatus,
@@ -97,6 +98,9 @@ export function CaseDetailPage() {
   const [noticeError, setNoticeError] = useState<string | null>(null)
   const [recognizing, setRecognizing] = useState(false)
   const [recognitionError, setRecognitionError] = useState<string | null>(null)
+  const [questionnaireSending, setQuestionnaireSending] = useState(false)
+  const [questionnaireError, setQuestionnaireError] = useState<string | null>(null)
+  const [questionnaireSent, setQuestionnaireSent] = useState(false)
 
   useEffect(() => {
     if (item) setStatus(item.status)
@@ -172,6 +176,24 @@ export function CaseDetailPage() {
       )
     } finally {
       setRecognizing(false)
+    }
+  }
+
+  async function handleSendQuestionnaire() {
+    setQuestionnaireError(null)
+    setQuestionnaireSent(false)
+    setQuestionnaireSending(true)
+    try {
+      await sendQuestionnaire(numericCaseId)
+      setQuestionnaireSent(true)
+    } catch (caught) {
+      setQuestionnaireError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось отправить анкету клиенту."
+      )
+    } finally {
+      setQuestionnaireSending(false)
     }
   }
 
@@ -406,7 +428,21 @@ export function CaseDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <LegalAssessmentView assessment={item.legal_assessment} />
+              <LegalAssessmentView
+                assessment={item.legal_assessment}
+                onSendToClient={handleSendQuestionnaire}
+                sending={questionnaireSending}
+              />
+              {questionnaireSent ? (
+                <p className="mt-3 text-sm text-emerald-600">
+                  Анкета отправлена клиенту в Telegram.
+                </p>
+              ) : null}
+              {questionnaireError ? (
+                <p className="mt-3 text-sm text-destructive">
+                  {questionnaireError}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         </div>

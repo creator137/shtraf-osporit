@@ -1,7 +1,8 @@
-import { ClipboardListIcon, ScaleIcon } from "lucide-react"
+import { ClipboardListIcon, ScaleIcon, SendIcon } from "lucide-react"
 
 import { EmptyState } from "@/components/data-feedback"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -17,23 +18,38 @@ import type {
 import { formatDate } from "@/lib/format"
 
 const evidenceLabels: Record<EvidenceStatus, string> = {
-  AVAILABLE: "Материалы указаны",
-  NEEDED: "Нужны доказательства",
-  VERIFY: "Требуется проверка",
+  AVAILABLE: "есть",
+  NEEDED: "не предоставлено",
+  VERIFY: "нужно запросить",
 }
 
 export function LegalAssessmentView({
   assessment,
+  onSendToClient,
+  sending,
 }: {
   assessment: LegalAssessmentItem | null
+  onSendToClient: () => void
+  sending: boolean
 }) {
   if (!assessment) {
     return (
-      <EmptyState
-        icon={ClipboardListIcon}
-        title="Анкета ещё не пройдена"
-        description="Ответы пользователя и направления проверки появятся после прохождения анкеты в Telegram."
-      />
+      <div className="flex flex-col gap-4">
+        <EmptyState
+          icon={ClipboardListIcon}
+          title="Анкета ещё не пройдена"
+          description="Ответы пользователя и направления проверки появятся после прохождения анкеты в Telegram."
+        />
+        <Button
+          className="self-start"
+          variant="outline"
+          onClick={onSendToClient}
+          disabled={sending}
+        >
+          <SendIcon data-icon="inline-start" />
+          {sending ? "Отправка..." : "Отправить анкету клиенту"}
+        </Button>
+      </div>
     )
   }
 
@@ -49,6 +65,16 @@ export function LegalAssessmentView({
         <span className="text-sm text-muted-foreground">
           Обновлено: {formatDate(assessment.updated_at)}
         </span>
+        <Button
+          className="ml-auto"
+          variant="outline"
+          size="sm"
+          onClick={onSendToClient}
+          disabled={sending}
+        >
+          <SendIcon data-icon="inline-start" />
+          {sending ? "Отправка..." : "Отправить анкету клиенту"}
+        </Button>
       </div>
 
       <div>
@@ -97,11 +123,19 @@ export function LegalAssessmentView({
                 </div>
                 <p className="mt-2 text-sm">{result.direction}</p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {result.legal_basis}
+                  Почему: {(result.reasons ?? []).join(" ")}
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Необходимо: {result.required_evidence.join(", ")}.
+                  {result.legal_basis}
                 </p>
+                <div className="mt-3 flex flex-col gap-2 text-sm">
+                  {(result.evidence_items ?? []).map((item) => (
+                    <div key={`${result.code}-${item.name}`} className="flex flex-wrap gap-2">
+                      <Badge variant="outline">{evidenceLabels[item.status]}</Badge>
+                      <span>{item.name}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

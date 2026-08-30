@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,17 +30,17 @@ from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.document_service import BACKEND_ROOT, remove_local_document_file
 from app.services.extraction_service import FineNoticeFields
-from app.services.ocr_service import create_ocr_provider
-from app.services.recognition_service import RecognitionService
 from app.services.legal_rules import (
     LEGAL_SOURCES,
     QUESTIONS,
+    RULE_VERSIONS,
     RULES,
     answer_label,
     get_question,
     serialize_rule,
 )
-
+from app.services.ocr_service import create_ocr_provider
+from app.services.recognition_service import RecognitionService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -131,6 +132,17 @@ class LegalRuleItem(BaseModel):
     source_ids: list[str]
 
 
+class LegalEvidenceItem(BaseModel):
+    name: str
+    status: str
+
+
+class LegalRuleVersionItem(BaseModel):
+    version: str
+    effective_from: str
+    title: str
+
+
 class LegalSourceItem(BaseModel):
     id: str
     title: str
@@ -141,6 +153,7 @@ class LegalSourceItem(BaseModel):
 
 class LegalKnowledgeBase(BaseModel):
     rules: list[LegalRuleItem]
+    versions: list[LegalRuleVersionItem]
     sources: list[LegalSourceItem]
 
 
@@ -314,6 +327,7 @@ async def get_case(
 async def get_legal_rules() -> LegalKnowledgeBase:
     return LegalKnowledgeBase(
         rules=[LegalRuleItem(**serialize_rule(rule)) for rule in RULES],
+        versions=[LegalRuleVersionItem(**item) for item in RULE_VERSIONS],
         sources=[LegalSourceItem(**source) for source in LEGAL_SOURCES],
     )
 
@@ -374,6 +388,50 @@ async def update_fine_notice(
     )
     await session.commit()
     return await get_case(case_id, session)
+
+
+@router.post("/cases/{case_id}/send-questionnaire", status_code=204)
+async def send_questionnaire_to_client(
+    case_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    case = await session.scalar(
+        select(Case)
+        .where(Case.id == case_id)
+        .options(selectinload(Case.user))
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail="Case not found")
+
+    bot = create_bot(get_settings())
+    try:
+        await bot.send_message(
+            chat_id=case.user.telegram_id,
+            text=(
+                f"По делу №{case.id} нужно заполнить юридическую анкету.\n\n"
+                "Ответьте на несколько вопросов о постановлении, чтобы система "
+                "определила направления дальнейшей проверки."
+            ),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="Пройти юридическую анкету",
+                            callback_data=f"legal:start:{case.id}",
+                        )
+                    ]
+                ]
+            ),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Не удалось отправить анкету в Telegram.",
+        ) from exc
+    finally:
+        await bot.session.close()
+
+    return Response(status_code=204)
 
 
 @router.post("/cases/{case_id}/recognize", response_model=CaseDetail)

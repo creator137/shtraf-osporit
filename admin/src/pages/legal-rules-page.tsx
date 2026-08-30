@@ -29,7 +29,7 @@ export function LegalRulesPage() {
       <div>
         <h1 className="text-xl font-semibold">Юридические правила</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Версионированные направления проверки, используемые анкетой Stage 3.
+          Направления проверки, которые система подбирает по ответам пользователя.
         </p>
       </div>
 
@@ -38,6 +38,17 @@ export function LegalRulesPage() {
       ) : (
         <>
           <div className="grid gap-3 lg:grid-cols-2">
+            {(data?.versions ?? []).map((version) => (
+              <Card key={version.version}>
+                <CardHeader>
+                  <CardTitle className="text-base">{version.title}</CardTitle>
+                  <CardDescription>{version.version}</CardDescription>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground">
+                  Действует с {version.effective_from}
+                </CardContent>
+              </Card>
+            ))}
             {(data?.sources ?? []).map((source) => (
               <Card key={source.id}>
                 <CardHeader>
@@ -69,7 +80,7 @@ export function LegalRulesPage() {
             <CardHeader>
               <div className="flex items-center gap-2">
                 <ScaleIcon className="size-5 text-muted-foreground" />
-                <CardTitle>Сценарии MVP</CardTitle>
+                <CardTitle>Сценарии проверки</CardTitle>
               </div>
               <CardDescription>
                 Система выводит эти направления из фактических ответов пользователя.

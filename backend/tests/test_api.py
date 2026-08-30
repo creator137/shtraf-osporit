@@ -1,25 +1,26 @@
-import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import app.api.admin as admin_api
 import app.services.document_service as document_service_module
-from app.db.models import CaseStatus, RecognitionStatus
+import pytest
 from app.api.admin import get_session
 from app.api.main import app
 from app.config import get_settings
-from app.db.models import Document
+from app.db.models import CaseStatus, Document, RecognitionStatus
+from app.services.case_service import CaseService
 from app.services.consent_service import (
     PERSONAL_DATA_CONSENT_VERSION,
     ConsentService,
 )
-from app.services.case_service import CaseService
 from app.services.document_service import DocumentService
-from app.services.ocr_service import OcrResult
-from app.services.user_service import UserService
 from app.services.legal_assessment_service import LegalAssessmentService
 from app.services.legal_rules import get_next_question
+from app.services.ocr_service import OcrResult
+from app.services.user_service import UserService
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.fixture
@@ -147,6 +148,10 @@ async def test_legal_rules_and_case_assessment_api(
     assert knowledge_response.status_code == 200
     knowledge = knowledge_response.json()
     assert {rule["code"] for rule in knowledge["rules"]} >= {"A01", "A12", "A17"}
+    assert {version["version"] for version in knowledge["versions"]} >= {
+        "2026-08-28",
+        "2026-09-01",
+    }
     assert next(
         source for source in knowledge["sources"] if source["id"] == "plenum-vs-20"
     )["document_available"] is True
@@ -158,13 +163,19 @@ async def test_legal_rules_and_case_assessment_api(
     service = LegalAssessmentService(db_session)
     assessment = await service.start(case.id)
     answers = {
+        "appeal_received_at": "28.08.2026",
         "driver": "sold",
         "sale_docs": "yes",
         "vehicle_photo": "yes",
         "plate_photo": "yes",
+        "place_time_match": "yes",
         "speed": "not_speed",
         "camera": "none",
         "sign": "none",
+        "marking": "none",
+        "owner_data_match": "yes",
+        "previous_resolution": "no",
+        "article_qualification": "no",
         "duplicate": "no",
         "emergency": "no",
     }
@@ -176,6 +187,7 @@ async def test_legal_rules_and_case_assessment_api(
     legal = detail_response.json()["legal_assessment"]
     assert legal["status"] == "COMPLETED"
     assert legal["results"][0]["code"] == "A02"
+    assert legal["results"][0]["evidence_items"][0]["status"] == "AVAILABLE"
     assert next(item for item in legal["answers"] if item["question_id"] == "driver")[
         "answer"
     ] == "Автомобиль был продан"
@@ -274,6 +286,36 @@ async def test_update_case_status(api_client: AsyncClient, db_session: AsyncSess
 
     assert response.status_code == 200
     assert response.json()["status"] == CaseStatus.IN_PROGRESS.value
+
+
+@pytest.mark.asyncio
+async def test_send_questionnaire_to_client(
+    api_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        200_000_008, "questionnaire_client", "Questionnaire", "Client"
+    )
+    case = await CaseService(db_session).create(user.id)
+    bot = SimpleNamespace(
+        send_message=AsyncMock(),
+        session=SimpleNamespace(close=AsyncMock()),
+    )
+    monkeypatch.setattr(admin_api, "create_bot", lambda settings: bot)
+
+    response = await api_client.post(f"/admin/cases/{case.id}/send-questionnaire")
+
+    assert response.status_code == 204
+    bot.send_message.assert_awaited_once()
+    call = bot.send_message.await_args
+    assert call.kwargs["chat_id"] == user.telegram_id
+    assert f"делу №{case.id}" in call.kwargs["text"]
+    assert (
+        call.kwargs["reply_markup"].inline_keyboard[0][0].callback_data
+        == f"legal:start:{case.id}"
+    )
+    bot.session.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
