@@ -1,12 +1,14 @@
 import asyncio
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import app.services.document_service as document_service_module
+import app.services.generated_document_service as generated_document_service_module
 import app.services.ocr_service as ocr_service_module
 import pymupdf
 import pytest
+from docx import Document as DocxDocument
 from app.bot.handlers.cases import _case_detail_text
 from app.bot.handlers.cases import create_case
 from app.bot.handlers.documents import _save_document
@@ -19,6 +21,11 @@ from app.db.models import (
     CaseStatus,
     Document,
     DocumentRecognition,
+    GeneratedDocumentType,
+    LegalAnalysisStatus,
+    LegalAssessment,
+    LegalAssessmentStatus,
+    LegalGroundStatus,
     RecognitionStatus,
     User,
     UserConsent,
@@ -32,6 +39,7 @@ from app.services.consent_service import (
 from app.services.document_service import DocumentService
 from app.services.extraction_service import FineNoticeExtractor, FineNoticeFields
 from app.services.legal_assessment_service import LegalAssessmentService
+from app.services.legal_analysis_service import LegalAnalysisService
 from app.services.legal_rules import (
     EvidenceStatus,
     evaluate_rules,
@@ -47,6 +55,70 @@ from app.services.recognition_service import RecognitionService
 from app.services.user_service import UserService
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class FakeDeepSeekClient:
+    def __init__(self) -> None:
+        self.document_prompts: list[str] = []
+
+    async def complete_json(self, *, system_prompt, user_prompt, schema):
+        from app.ai.schemas import GeneratedLegalDocument, LegalAnalysisResult
+
+        if schema is LegalAnalysisResult:
+            return LegalAnalysisResult(
+                summary="Есть основания для проверки доказательств.",
+                overall_assessment="Недостаточно документов — необходимо истребование доказательств.",
+                missing_evidence=["сведения о поверке комплекса"],
+                additional_questions=["Есть исходные фотофиксации?"],
+                grounds=[
+                    {
+                        "id": "ground-valid",
+                        "title": "Проверка поверки комплекса",
+                        "description": "Нет сведений о поверке на дату фиксации.",
+                        "supporting_fact_ids": ["article", "answer_camera"],
+                        "legal_rule_ids": ["A12"],
+                        "source_ids": ["koap-rf"],
+                        "missing_evidence": ["сведения о поверке комплекса"],
+                        "assumptions": ["данные поверки не представлены"],
+                        "recommended": True,
+                    },
+                    {
+                        "id": "ground-invalid-rule",
+                        "title": "Нельзя сохранять",
+                        "description": "Ссылка на несуществующее правило.",
+                        "supporting_fact_ids": ["article"],
+                        "legal_rule_ids": ["DOES_NOT_EXIST"],
+                        "source_ids": ["koap-rf"],
+                    },
+                    {
+                        "id": "ground-invalid-source",
+                        "title": "Неизвестная судебная практика",
+                        "description": "Ссылка на неизвестный источник.",
+                        "supporting_fact_ids": ["article"],
+                        "legal_rule_ids": ["A12"],
+                        "source_ids": ["unknown-case"],
+                    },
+                    {
+                        "id": "ground-invalid-fact",
+                        "title": "Выдуманная характеристика камеры",
+                        "description": "Ссылка на факт, которого нет во входных данных.",
+                        "supporting_fact_ids": ["camera_serial_number"],
+                        "legal_rule_ids": ["A12"],
+                        "source_ids": ["koap-rf"],
+                    },
+                ],
+            )
+
+        assert schema is GeneratedLegalDocument
+        self.document_prompts.append(user_prompt)
+        assert "Отклоненное основание" not in user_prompt
+        return GeneratedLegalDocument(
+            title="Жалоба на постановление",
+            sections=[
+                "Прошу отменить постановление по делу о штрафе.",
+                "Используется только подтвержденное основание: Проверка поверки комплекса.",
+            ],
+        )
 
 
 @pytest.mark.asyncio
@@ -499,6 +571,150 @@ async def test_legal_assessment_persists_completed_result(
 
     with pytest.raises(ValueError, match="already completed"):
         await service.answer(loaded, "driver", "owner")
+
+
+async def _create_completed_stage_three_case(
+    db_session: AsyncSession,
+) -> Case:
+    user = await UserService(db_session).get_or_create(
+        100_000_040, None, "Stage", "Four"
+    )
+    case = await CaseService(db_session).create(user.id)
+    await RecognitionService(db_session).update_notice(
+        case.id,
+        FineNoticeFields(
+            notice_number="18810177260901000123",
+            notice_date="01.09.2026",
+            fine_amount=1500,
+            article="ч.2 ст.12.9",
+            vehicle_plate="А000АА00",
+            violation_datetime="01.09.2026 12:30",
+            violation_place="Тестовая улица, дом 1",
+            issuing_authority="Тестовый орган",
+        ),
+    )
+    answers = {
+        "appeal_received_at": "02.09.2026",
+        "driver": "owner",
+        "vehicle_photo": "yes",
+        "plate_photo": "yes",
+        "place_time_match": "yes",
+        "speed": "dispute",
+        "speed_docs": "no",
+        "camera": "calibration",
+        "sign": "none",
+        "marking": "none",
+        "owner_data_match": "yes",
+        "previous_resolution": "no",
+        "article_qualification": "no",
+        "duplicate": "no",
+        "emergency": "no",
+    }
+    assessment = LegalAssessment(
+        case_id=case.id,
+        status=LegalAssessmentStatus.COMPLETED,
+        answers=answers,
+        results=evaluate_rules(answers, notice_article="ч.2 ст.12.9"),
+        rules_version="2026-09-01",
+        completed_at=datetime.now(UTC),
+    )
+    db_session.add(assessment)
+    await db_session.flush()
+    return case
+
+
+@pytest.mark.asyncio
+async def test_legal_analysis_filters_unknown_rules_sources_and_facts(
+    db_session: AsyncSession,
+) -> None:
+    case = await _create_completed_stage_three_case(db_session)
+    analysis = await LegalAnalysisService(
+        db_session, FakeDeepSeekClient()
+    ).analyze_case(case.id)
+
+    assert analysis.status is LegalAnalysisStatus.PENDING_CONFIRMATION
+    assert analysis.model == get_settings().deepseek_model
+    assert [ground["id"] for ground in analysis.grounds] == ["ground-valid"]
+    assert analysis.grounds[0]["legal_rule_ids"] == ["A12"]
+    assert analysis.grounds[0]["source_ids"] == ["koap-rf"]
+    assert "сведения о поверке комплекса" in analysis.missing_evidence
+    assert analysis.input_summary["case"]["facts"]["vehicle_plate"] == "А000АА00"
+
+
+@pytest.mark.asyncio
+async def test_legal_ground_confirmation_and_rejection_are_saved(
+    db_session: AsyncSession,
+) -> None:
+    case = await _create_completed_stage_three_case(db_session)
+    service = LegalAnalysisService(db_session, FakeDeepSeekClient())
+    analysis = await service.analyze_case(case.id)
+
+    analysis = await service.set_ground_status(
+        case.id, "ground-valid", LegalGroundStatus.CONFIRMED
+    )
+    assert analysis.status is LegalAnalysisStatus.CONFIRMED
+    assert analysis.grounds[0]["status"] == LegalGroundStatus.CONFIRMED.value
+
+    analysis = await service.set_ground_status(
+        case.id, "ground-valid", LegalGroundStatus.REJECTED
+    )
+    assert analysis.status is LegalAnalysisStatus.PENDING_CONFIRMATION
+    assert analysis.grounds[0]["status"] == LegalGroundStatus.REJECTED.value
+
+
+@pytest.mark.asyncio
+async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
+    db_session: AsyncSession, tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(generated_document_service_module, "BACKEND_ROOT", tmp_path)
+    monkeypatch.setattr(
+        generated_document_service_module,
+        "GENERATED_ROOT",
+        tmp_path / "storage" / "generated",
+    )
+    case = await _create_completed_stage_three_case(db_session)
+    fake_client = FakeDeepSeekClient()
+    service = LegalAnalysisService(db_session, fake_client)
+    analysis = await service.analyze_case(case.id)
+    analysis.grounds = [
+        {**analysis.grounds[0], "status": LegalGroundStatus.CONFIRMED.value},
+        {
+            "id": "rejected",
+            "title": "Отклоненное основание",
+            "description": "Не должно попасть в документы.",
+            "supporting_fact_ids": ["article"],
+            "legal_rule_ids": ["A12"],
+            "source_ids": ["koap-rf"],
+            "missing_evidence": [],
+            "assumptions": [],
+            "recommended": False,
+            "status": LegalGroundStatus.REJECTED.value,
+        },
+    ]
+    await db_session.flush()
+
+    documents = await service.generate_documents(case.id)
+
+    assert len(documents) == 4
+    assert {document.document_type for document in documents} == {
+        GeneratedDocumentType.COMPLAINT,
+        GeneratedDocumentType.EVIDENCE_PETITION,
+    }
+    assert all("Отклоненное основание" not in prompt for prompt in fake_client.document_prompts)
+
+    docx_document = next(document for document in documents if document.original_filename.endswith(".docx"))
+    pdf_document = next(document for document in documents if document.original_filename.endswith(".pdf"))
+    docx_text = "\n".join(
+        paragraph.text for paragraph in DocxDocument(tmp_path / docx_document.file_path).paragraphs
+    )
+    pdf = pymupdf.open(tmp_path / pdf_document.file_path)
+    try:
+        pdf_text = "\n".join(page.get_text() for page in pdf)
+    finally:
+        pdf.close()
+
+    assert "Прошу отменить постановление" in docx_text
+    assert "Прошу отменить постановление" in pdf_text
 
 
 @pytest.mark.asyncio

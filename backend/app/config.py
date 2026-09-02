@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     ocr_space_language: str = "rus"
     ocr_max_file_size_bytes: int = 1_000_000
     ocr_max_pdf_pages: int = 3
+    deepseek_api_key: SecretStr | None = None
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-v4-pro"
 
     model_config = SettingsConfigDict(
         env_file=REPOSITORY_ROOT / ".env",

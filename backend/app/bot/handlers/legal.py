@@ -4,6 +4,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
+    FSInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
 )
@@ -17,8 +18,16 @@ from app.bot.keyboards.main import (
     main_menu_keyboard,
 )
 from app.bot.utils import safe_answer, safe_callback_answer
-from app.db.models import LegalAssessment, LegalAssessmentStatus
+from app.db.models import (
+    GeneratedDocumentFormat,
+    LegalAnalysis,
+    LegalAssessment,
+    LegalAssessmentStatus,
+    LegalGroundStatus,
+)
 from app.services.case_service import CaseService
+from app.services.generated_document_service import generated_file_path
+from app.services.legal_analysis_service import LegalAnalysisService
 from app.services.legal_assessment_service import LegalAssessmentService
 from app.services.legal_rules import (
     EvidenceStatus,
@@ -123,6 +132,12 @@ def _result_keyboard(case_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
+                    text="Запустить AI-анализ",
+                    callback_data=f"ai:start:{case_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="Пройти заново", callback_data=f"legal:restart:{case_id}"
                 )
             ],
@@ -175,6 +190,78 @@ def _result_text(assessment: LegalAssessment) -> str:
                 f"Не предоставлено: {', '.join(missing) if missing else 'нет'}.",
                 f"Нужно запросить: {', '.join(verify) if verify else 'нет'}.",
                 "Дальше: соберите недостающие материалы и проверьте указанные сведения.",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _analysis_keyboard(case_id: int, analysis: LegalAnalysis) -> InlineKeyboardMarkup:
+    rows = []
+    for ground in analysis.grounds:
+        ground_id = str(ground.get("id"))
+        title = str(ground.get("title") or ground_id)
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Использовать: {title[:32]}",
+                    callback_data=f"ai:ground:{case_id}:{ground_id}:confirm",
+                )
+            ]
+        )
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"Не использовать: {title[:28]}",
+                    callback_data=f"ai:ground:{case_id}:{ground_id}:reject",
+                )
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Подготовить документы",
+                callback_data=f"ai:docs:{case_id}",
+            )
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _analysis_text(analysis: LegalAnalysis) -> str:
+    result = analysis.result or {}
+    lines = [
+        "AI-анализ завершён.",
+        "",
+        str(result.get("summary") or "Система предложила возможные основания."),
+        "",
+        str(result.get("overall_assessment") or "Оценка предварительная, без гарантии результата."),
+    ]
+    if not analysis.grounds:
+        lines.extend(["", "Валидные основания не найдены."])
+        return "\n".join(lines)
+
+    lines.extend(["", "Предложенные основания:"])
+    for ground in analysis.grounds:
+        lines.extend(
+            [
+                "",
+                f"{ground.get('id')} · {ground.get('title')}",
+                str(ground.get("description") or ""),
+                "На чем основано: "
+                + ", ".join(
+                    [
+                        *[f"факт {item}" for item in ground.get("supporting_fact_ids", [])],
+                        *[f"правило {item}" for item in ground.get("legal_rule_ids", [])],
+                        *[f"источник {item}" for item in ground.get("source_ids", [])],
+                    ]
+                ),
+                "Что нужно дополнительно: "
+                + (
+                    ", ".join(ground.get("missing_evidence", []))
+                    if ground.get("missing_evidence")
+                    else "нет"
+                ),
+                f"Статус: {ground.get('status')}",
             ]
         )
     return "\n".join(lines)
@@ -343,6 +430,118 @@ async def answer_question(
         _result_text(assessment),
         reply_markup=_result_keyboard(case.id),
     )
+
+
+@router.callback_query(F.data.startswith("ai:start:"))
+async def start_ai_analysis(
+    callback: CallbackQuery, session: AsyncSession
+) -> None:
+    await safe_callback_answer(callback)
+    if callback.data is None or callback.message is None:
+        return
+    try:
+        case_id = int(callback.data.rpartition(":")[2])
+    except ValueError:
+        return
+    case = await _case_for_callback(callback, case_id, session)
+    if case is None:
+        await safe_answer(callback.message, "Дело не найдено.")
+        return
+    await safe_answer(callback.message, "Выполняю AI-анализ дела. Это может занять до минуты.")
+    try:
+        analysis = await LegalAnalysisService(session).analyze_case(case.id)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        await safe_answer(callback.message, "Не удалось выполнить анализ. Попробуйте повторить позже.")
+        return
+    await safe_answer(
+        callback.message,
+        _analysis_text(analysis),
+        reply_markup=_analysis_keyboard(case.id, analysis),
+    )
+
+
+@router.callback_query(F.data.startswith("ai:ground:"))
+async def confirm_ai_ground(
+    callback: CallbackQuery, session: AsyncSession
+) -> None:
+    await safe_callback_answer(callback)
+    if callback.data is None or callback.message is None:
+        return
+    parts = callback.data.split(":")
+    if len(parts) != 5:
+        return
+    _, _, case_value, ground_id, action = parts
+    try:
+        case_id = int(case_value)
+    except ValueError:
+        return
+    case = await _case_for_callback(callback, case_id, session)
+    if case is None:
+        await safe_answer(callback.message, "Дело не найдено.")
+        return
+    status = (
+        LegalGroundStatus.CONFIRMED
+        if action == "confirm"
+        else LegalGroundStatus.REJECTED
+    )
+    try:
+        analysis = await LegalAnalysisService(session).set_ground_status(
+            case.id, ground_id, status
+        )
+        await session.commit()
+    except ValueError:
+        await safe_answer(callback.message, "Основание не найдено.")
+        return
+    await safe_answer(
+        callback.message,
+        _analysis_text(analysis),
+        reply_markup=_analysis_keyboard(case.id, analysis),
+    )
+
+
+@router.callback_query(F.data.startswith("ai:docs:"))
+async def generate_ai_documents(
+    callback: CallbackQuery, session: AsyncSession
+) -> None:
+    await safe_callback_answer(callback)
+    if callback.data is None or callback.message is None:
+        return
+    try:
+        case_id = int(callback.data.rpartition(":")[2])
+    except ValueError:
+        return
+    case = await _case_for_callback(callback, case_id, session)
+    if case is None:
+        await safe_answer(callback.message, "Дело не найдено.")
+        return
+    await safe_answer(callback.message, "Готовлю жалобу и ходатайство, если оно нужно.")
+    try:
+        documents = await LegalAnalysisService(session).generate_documents(case.id)
+        await session.commit()
+    except ValueError as exc:
+        await safe_answer(callback.message, str(exc))
+        return
+    except Exception:
+        await session.rollback()
+        await safe_answer(callback.message, "Не удалось подготовить документы. Попробуйте повторить позже.")
+        return
+
+    confirmed = case.legal_analysis.grounds if case.legal_analysis else []
+    missing_count = len(case.legal_analysis.missing_evidence) if case.legal_analysis else 0
+    await safe_answer(
+        callback.message,
+        "Документы готовы.\n\n"
+        f"Подтверждено оснований: {sum(1 for item in confirmed if item.get('status') == LegalGroundStatus.CONFIRMED.value)}\n"
+        f"Необходимы дополнительные доказательства: {missing_count}",
+        reply_markup=main_menu_keyboard(),
+    )
+    for document in documents:
+        if document.file_format in {GeneratedDocumentFormat.DOCX, GeneratedDocumentFormat.PDF}:
+            await callback.message.answer_document(
+                FSInputFile(generated_file_path(document), filename=document.original_filename)
+            )
 
 
 @router.message(LegalQuestionnaire.waiting_for_answer)

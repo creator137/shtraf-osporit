@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.db.models.document import Document
     from app.db.models.fine_notice import FineNotice
     from app.db.models.legal_assessment import LegalAssessment
+    from app.db.models.legal_analysis import GeneratedDocument, LegalAnalysis
     from app.db.models.user import User
 
 
@@ -59,4 +60,15 @@ class Case(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
+    )
+    legal_analysis: Mapped["LegalAnalysis | None"] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    generated_documents: Mapped[list["GeneratedDocument"]] = relationship(
+        back_populates="case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

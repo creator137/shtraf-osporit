@@ -109,6 +109,26 @@ export interface LegalAssessmentItem {
   updated_at: string
 }
 
+export interface LegalAnalysisItem {
+  status: string
+  provider: string
+  model: string
+  summary: string | null
+  overall_assessment: string | null
+  grounds: Array<Record<string, unknown>>
+  missing_evidence: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface GeneratedDocumentItem {
+  id: number
+  document_type: string
+  file_format: string
+  original_filename: string
+  created_at: string
+}
+
 export interface LegalSourceItem {
   id: string
   title: string
@@ -134,6 +154,8 @@ export interface CaseDetail {
   fine_notice: FineNoticeItem | null
   recognized_fields_count: number
   legal_assessment: LegalAssessmentItem | null
+  legal_analysis: LegalAnalysisItem | null
+  generated_documents: GeneratedDocumentItem[]
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -222,4 +244,8 @@ export function sendQuestionnaire(caseId: number): Promise<void> {
 
 export function getDocumentFileUrl(documentId: number): string {
   return `${API_URL}/admin/documents/${documentId}/file`
+}
+
+export function getGeneratedDocumentFileUrl(documentId: number): string {
+  return `${API_URL}/admin/generated-documents/${documentId}/file`
 }

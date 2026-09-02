@@ -20,8 +20,10 @@ from app.db.models import (
     Document,
     DocumentRecognition,
     FineNotice,
+    GeneratedDocument,
     LegalAssessment,
     LegalAssessmentStatus,
+    LegalAnalysis,
     RecognitionStatus,
     User,
     UserConsent,
@@ -157,6 +159,26 @@ class LegalKnowledgeBase(BaseModel):
     sources: list[LegalSourceItem]
 
 
+class LegalAnalysisItem(BaseModel):
+    status: str
+    provider: str
+    model: str
+    summary: str | None
+    overall_assessment: str | None
+    grounds: list[dict[str, object]]
+    missing_evidence: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class GeneratedDocumentItem(BaseModel):
+    id: int
+    document_type: str
+    file_format: str
+    original_filename: str
+    created_at: datetime
+
+
 class CaseDetail(BaseModel):
     id: int
     status: CaseStatus
@@ -168,6 +190,8 @@ class CaseDetail(BaseModel):
     fine_notice: FineNoticeItem | None
     recognized_fields_count: int
     legal_assessment: LegalAssessmentItem | None
+    legal_analysis: LegalAnalysisItem | None
+    generated_documents: list[GeneratedDocumentItem]
 
 
 class CaseStatusUpdate(BaseModel):
@@ -256,6 +280,8 @@ async def list_cases(session: AsyncSession = Depends(get_session)) -> list[CaseL
             selectinload(Case.documents).selectinload(Document.recognition),
             selectinload(Case.fine_notice),
             selectinload(Case.legal_assessment),
+            selectinload(Case.legal_analysis),
+            selectinload(Case.generated_documents),
         )
         .order_by(desc(Case.created_at))
         .limit(100)
@@ -295,6 +321,8 @@ async def get_case(
             selectinload(Case.documents).selectinload(Document.recognition),
             selectinload(Case.fine_notice),
             selectinload(Case.legal_assessment),
+            selectinload(Case.legal_analysis),
+            selectinload(Case.generated_documents),
         )
     )
     if case is None:
@@ -320,6 +348,19 @@ async def get_case(
         fine_notice=fine_notice_item(case.fine_notice),
         recognized_fields_count=_recognized_fields_count(case.fine_notice),
         legal_assessment=legal_assessment_item(case.legal_assessment),
+        legal_analysis=legal_analysis_item(case.legal_analysis),
+        generated_documents=[
+            GeneratedDocumentItem(
+                id=document.id,
+                document_type=document.document_type.value,
+                file_format=document.file_format.value,
+                original_filename=document.original_filename,
+                created_at=document.created_at,
+            )
+            for document in sorted(
+                case.generated_documents, key=lambda item: item.created_at, reverse=True
+            )
+        ],
     )
 
 
@@ -535,6 +576,31 @@ async def get_document_file(
     )
 
 
+@router.get("/generated-documents/{document_id}/file", response_model=None)
+async def get_generated_document_file(
+    document_id: int, session: AsyncSession = Depends(get_session)
+) -> FileResponse:
+    document = await session.scalar(
+        select(GeneratedDocument).where(GeneratedDocument.id == document_id)
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="Generated document not found")
+    file_path = (BACKEND_ROOT / document.file_path).resolve()
+    storage_root = (BACKEND_ROOT / "storage").resolve()
+    if storage_root not in file_path.parents or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Generated document file not found")
+    media_type = (
+        "application/pdf"
+        if document.file_format.value == "PDF"
+        else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=document.original_filename,
+    )
+
+
 async def document_content(document: Document) -> bytes:
     if document.local_path:
         file_path = (BACKEND_ROOT / document.local_path).resolve()
@@ -630,6 +696,27 @@ def legal_assessment_item(
         results=assessment.results,
         completed_at=assessment.completed_at,
         updated_at=assessment.updated_at,
+    )
+
+
+def legal_analysis_item(analysis: LegalAnalysis | None) -> LegalAnalysisItem | None:
+    if analysis is None:
+        return None
+    result = analysis.result or {}
+    return LegalAnalysisItem(
+        status=analysis.status.value,
+        provider=analysis.provider,
+        model=analysis.model,
+        summary=result.get("summary") if isinstance(result.get("summary"), str) else None,
+        overall_assessment=(
+            result.get("overall_assessment")
+            if isinstance(result.get("overall_assessment"), str)
+            else None
+        ),
+        grounds=analysis.grounds,
+        missing_evidence=analysis.missing_evidence,
+        created_at=analysis.created_at,
+        updated_at=analysis.updated_at,
     )
 
 

@@ -1,35 +1,39 @@
-# Stage 3 - Legal Questionnaire + Rules Engine
+# Stage 4 - DeepSeek Legal Analysis and Document Generation
 
-Client price for this stage: **5 000 RUB**. This information defines the agreed scope.
+This file defines the currently paid/development scope.
 
-## Included In Stage 3
+## Included In Stage 4
 
-- A Telegram questionnaire that asks factual questions one at a time.
-- Deterministic selection of possible verification directions from user answers.
-- The approved Stage 3 verification situations provided by the client representative.
-- Versioned legal rule definitions and references to the provided legal sources.
-- Storage of questionnaire answers and the resulting rule matches per case.
-- Admin view of the legal rule catalogue, sources, answers, and results.
-- Tests for question branching, rule evaluation, persistence, and API output.
+- DeepSeek analysis of a completed Stage 3 case using structured OCR fields,
+  questionnaire answers, Legal Rules Engine results, and existing legal sources.
+- Structured Pydantic validation of AI output.
+- Storage of AI analysis input summary, proposed grounds, missing evidence, and
+  user confirmation status.
+- Telegram confirmation/rejection flow for proposed grounds.
+- Generation of an individual complaint and, when relevant, a petition to
+  request missing evidence.
+- DOCX and PDF output saved as case files and sent to the user.
+- Minimal read-only admin visibility for AI analysis and generated documents.
 
 ## Result Of This Stage
 
-The system uses the recognized fine notice and the user's factual answers to
-identify possible directions for further legal verification and the evidence
-that is available, missing, or must be requested.
+The system proposes potential legal arguments for the specific case, lets the
+user confirm or reject them, and generates documents only from confirmed
+arguments and known facts.
 
-The user does not choose a legal code. The rules engine derives matching codes
-from the answers.
+AI output must not introduce new legal sources, case facts, camera properties,
+or user answers. Unknown data must stay marked as missing or requiring request.
 
-## Excluded From Stage 3
+## Excluded From Stage 4
 
-- LLM-based legal reasoning.
-- A legal conclusion or guarantee that a fine will be cancelled.
 - Cancellation probability or commercial scoring.
-- Complaint, petition, DOCX, or PDF generation.
+- Payment flow.
+- Lawyer workflow.
+- Automatic filing to government systems.
+- ESIA, GIS GMP, courts, or Госуслуги integrations.
+- Automatic external registry checks, web scraping, vector search, or RAG.
 - Automatic image comparison of vehicles or plates.
 - Automatic verification of cameras, calibration, signs, or external registries.
-- Payments, lawyer workflow, ESIA, GIS GMP, and automatic filing.
-- Implementing the full future catalogue beyond the approved Stage 3 verification situations.
 
-> Stage 3 returns possible directions for verification. It does not generate a complaint or replace legal review.
+> Stage 4 generates draft documents for user review. It does not guarantee
+> cancellation of a fine and does not replace legal review.

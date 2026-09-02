@@ -38,6 +38,7 @@ import {
   deleteCase,
   getCase,
   getDocumentFileUrl,
+  getGeneratedDocumentFileUrl,
   recognizeCaseDocument,
   sendQuestionnaire,
   updateCaseStatus,
@@ -80,6 +81,16 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
       <dd className="min-w-0 break-words font-medium">{value}</dd>
     </div>
   )
+}
+
+function textValue(value: unknown): string {
+  return typeof value === "string" ? value : ""
+}
+
+function listValue(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : []
 }
 
 export function CaseDetailPage() {
@@ -453,6 +464,136 @@ export function CaseDetailPage() {
                   {questionnaireError}
                 </p>
               ) : null}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>AI Analysis</CardTitle>
+              <CardDescription>
+                Предложенные основания, статусы подтверждения и недостающие доказательства.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {!item.legal_analysis ? (
+                <EmptyState
+                  icon={FileSearchIcon}
+                  title="AI-анализ ещё не выполнен"
+                  description="После анализа здесь появятся предложенные основания и audit-информация."
+                />
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <dl className="flex flex-col gap-3">
+                    <DetailRow label="Статус" value={item.legal_analysis.status} />
+                    <DetailRow label="Модель" value={item.legal_analysis.model} />
+                    <DetailRow
+                      label="Итог"
+                      value={item.legal_analysis.overall_assessment ?? "Не указан"}
+                    />
+                    <DetailRow
+                      label="Кратко"
+                      value={item.legal_analysis.summary ?? "Не указано"}
+                    />
+                  </dl>
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold">Основания</h3>
+                    {item.legal_analysis.grounds.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Валидные основания не сохранены.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {item.legal_analysis.grounds.map((ground) => (
+                          <div
+                            key={textValue(ground.id)}
+                            className="rounded-md border p-4 text-sm"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="outline">{textValue(ground.id)}</Badge>
+                              <span className="font-semibold">
+                                {textValue(ground.title)}
+                              </span>
+                              <Badge variant="secondary">
+                                {textValue(ground.status)}
+                              </Badge>
+                            </div>
+                            <p className="mt-2 text-muted-foreground">
+                              {textValue(ground.description)}
+                            </p>
+                            <p className="mt-2">
+                              Rules: {listValue(ground.legal_rule_ids).join(", ") || "нет"}
+                            </p>
+                            <p>
+                              Sources: {listValue(ground.source_ids).join(", ") || "нет"}
+                            </p>
+                            <p>
+                              Missing: {listValue(ground.missing_evidence).join(", ") || "нет"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-sm font-semibold">
+                      Недостающие доказательства
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      {item.legal_analysis.missing_evidence.join(", ") || "Нет"}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Generated Documents</CardTitle>
+              <CardDescription>
+                Документы, сформированные по подтверждённым основаниям.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {item.generated_documents.length === 0 ? (
+                <EmptyState
+                  icon={FileTextIcon}
+                  title="Документы ещё не сформированы"
+                  description="После генерации здесь появятся DOCX и PDF."
+                />
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Тип</TableHead>
+                      <TableHead>Формат</TableHead>
+                      <TableHead>Создан</TableHead>
+                      <TableHead className="text-right">Действия</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {item.generated_documents.map((document) => (
+                      <TableRow key={document.id}>
+                        <TableCell>{document.document_type}</TableCell>
+                        <TableCell>{document.file_format}</TableCell>
+                        <TableCell>{formatDate(document.created_at)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" asChild>
+                            <a
+                              href={getGeneratedDocumentFileUrl(document.id)}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLinkIcon data-icon="inline-start" />
+                              Открыть
+                            </a>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </div>
