@@ -54,7 +54,8 @@ class DeepSeekClient:
         if response_json:
             body["response_format"] = {"type": "json_object"}
 
-        timeout = aiohttp.ClientTimeout(total=60)
+        # OCR and questionnaire data can make the full case context sizeable.
+        timeout = aiohttp.ClientTimeout(total=180)
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",

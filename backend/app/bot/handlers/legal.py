@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta
 
 from aiogram import F, Router
@@ -40,6 +41,7 @@ from app.services.legal_rules import (
 from app.services.user_service import UserService
 
 router = Router(name="legal")
+logger = logging.getLogger(__name__)
 
 
 def legal_start_button(case_id: int, *, completed: bool = False) -> InlineKeyboardButton:
@@ -452,6 +454,7 @@ async def start_ai_analysis(
         analysis = await LegalAnalysisService(session).analyze_case(case.id)
         await session.commit()
     except Exception:
+        logger.exception("Stage 4 AI analysis failed for case %s", case.id)
         await session.rollback()
         await safe_answer(callback.message, "Не удалось выполнить анализ. Попробуйте повторить позже.")
         return
