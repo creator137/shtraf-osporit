@@ -122,6 +122,8 @@ class LegalAnalysisService:
 
         context = {
             "case": analysis.input_summary.get("case", {}),
+            "facts": analysis.input_summary.get("facts", {}),
+            "questionnaire": analysis.input_summary.get("questionnaire", {}),
             "confirmed_grounds": confirmed,
             "missing_evidence": analysis.missing_evidence,
             "legal_rules": analysis.input_summary.get("legal_rules", []),
@@ -187,6 +189,7 @@ class LegalAnalysisService:
 
 def build_analysis_context(case: Case, assessment: LegalAssessment) -> dict[str, Any]:
     notice = case.fine_notice
+    correspondence_address = (assessment.answers.get("correspondence_address") or "").strip()
     facts = {
         "notice_number": notice.notice_number if notice else None,
         "notice_date": notice.notice_date if notice else None,
@@ -196,6 +199,7 @@ def build_analysis_context(case: Case, assessment: LegalAssessment) -> dict[str,
         "violation_place": notice.violation_place if notice else None,
         "issuing_authority": notice.issuing_authority if notice else None,
         "fine_amount": notice.fine_amount if notice else None,
+        "correspondence_address": correspondence_address or None,
     }
     answer_facts = {
         f"answer_{question_id}": answer_label(question_id, value)

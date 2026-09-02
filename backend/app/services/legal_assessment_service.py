@@ -71,6 +71,12 @@ class LegalAssessmentService:
             normalized_value = normalize_date_answer(value) or value.strip()
             if parse_date(normalized_value) is None:
                 raise ValueError("Invalid date format")
+        elif question.input_kind == "text":
+            normalized_value = " ".join(value.split())
+            if len(normalized_value) < 5:
+                raise ValueError("Text answer is too short")
+            if len(normalized_value) > 500:
+                raise ValueError("Text answer is too long")
 
         assessment.answers = {**assessment.answers, question_id: normalized_value}
         next_question = get_next_question(

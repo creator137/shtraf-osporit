@@ -358,6 +358,7 @@ def test_legal_rules_derive_directions_and_evidence_from_answers() -> None:
     results = evaluate_rules(
         {
             "appeal_received_at": "28.08.2026",
+        "correspondence_address": "Москва, Тверская улица, дом 1",
             "driver": "other",
             "driver_docs": "yes",
             "vehicle_photo": "different",
@@ -391,6 +392,7 @@ def test_extended_stage_three_scenarios_are_evaluated() -> None:
     results = evaluate_rules(
         {
             "appeal_received_at": "28.08.2026",
+        "correspondence_address": "Москва, Тверская улица, дом 1",
             "driver": "lost",
             "possession_docs": "yes",
             "vehicle_photo": "no_photo",
@@ -434,6 +436,7 @@ FIRST_TEN_SCENARIO_CASES = (
 
 BASE_NEGATIVE_LEGAL_ANSWERS = {
     "appeal_received_at": "28.08.2026",
+    "correspondence_address": "Москва, Тверская улица, дом 1",
     "driver": "owner",
     "vehicle_photo": "yes",
     "plate_photo": "yes",
@@ -486,7 +489,13 @@ def test_first_ten_scenarios_have_positive_and_negative_control_examples(
 
 def test_legal_questionnaire_branches_on_factual_answer() -> None:
     assert get_next_question({}).id == "appeal_received_at"
-    answers = {"appeal_received_at": "28.08.2026"}
+    answers = {
+        "appeal_received_at": "28.08.2026",
+        "correspondence_address": "Москва, Тверская улица, дом 1",
+    }
+    assert get_next_question({"appeal_received_at": "28.08.2026"}).id == (
+        "correspondence_address"
+    )
     assert get_next_question(answers).id == "driver"
     assert get_next_question({**answers, "driver": "owner"}).id == "vehicle_photo"
     assert get_next_question({**answers, "driver": "other"}).id == "driver_docs"
@@ -497,11 +506,18 @@ def test_overdue_appeal_questions_are_asked_first() -> None:
 
     assert question is not None
     assert question.id == "appeal_delay_reason"
+    assert get_next_question(
+        {
+            "appeal_received_at": "10.08.2026",
+            "appeal_delay_reason": "late_receipt",
+        }
+    ).id == "correspondence_address"
 
 
 def test_non_speed_notice_skips_speed_questions_and_rule() -> None:
     answers = {
         "appeal_received_at": "28.08.2026",
+        "correspondence_address": "Москва, Тверская улица, дом 1",
         "driver": "owner",
         "vehicle_photo": "yes",
         "plate_photo": "yes",
@@ -544,6 +560,7 @@ async def test_legal_assessment_persists_completed_result(
     assessment = await service.start(case.id)
     answers = {
         "appeal_received_at": "28.08.2026",
+        "correspondence_address": "Москва, Тверская улица, дом 1",
         "driver": "other",
         "driver_docs": "yes",
         "vehicle_photo": "yes",
@@ -573,6 +590,31 @@ async def test_legal_assessment_persists_completed_result(
         await service.answer(loaded, "driver", "owner")
 
 
+@pytest.mark.asyncio
+async def test_legal_assessment_saves_correspondence_address(
+    db_session: AsyncSession,
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_021, None, "Legal", "Address"
+    )
+    case = await CaseService(db_session).create(user.id)
+    service = LegalAssessmentService(db_session)
+    assessment = await service.start(case.id)
+
+    await service.answer(assessment, "appeal_received_at", "28.08.2026")
+    next_question = await service.answer(
+        assessment,
+        "correspondence_address",
+        "  Москва,   Тверская улица, дом 1  ",
+    )
+
+    assert next_question is not None
+    assert next_question.id == "driver"
+    assert assessment.answers["correspondence_address"] == (
+        "Москва, Тверская улица, дом 1"
+    )
+
+
 async def _create_completed_stage_three_case(
     db_session: AsyncSession,
 ) -> Case:
@@ -595,6 +637,7 @@ async def _create_completed_stage_three_case(
     )
     answers = {
         "appeal_received_at": "02.09.2026",
+        "correspondence_address": "Москва, Тверская улица, дом 1",
         "driver": "owner",
         "vehicle_photo": "yes",
         "plate_photo": "yes",

@@ -219,6 +219,15 @@ QUESTIONS = (
         ),
     ),
     LegalQuestion(
+        id="correspondence_address",
+        text=(
+            "Укажите адрес для корреспонденции. "
+            "Он будет использован в проекте жалобы."
+        ),
+        options=(),
+        input_kind="text",
+    ),
+    LegalQuestion(
         id="driver",
         text="Кто фактически пользовался автомобилем в момент нарушения?",
         options=(
@@ -616,6 +625,10 @@ def get_next_question(
     if appeal_overdue and "appeal_delay_reason" not in answers:
         return next(
             question for question in QUESTIONS if question.id == "appeal_delay_reason"
+        )
+    if "correspondence_address" not in answers:
+        return next(
+            question for question in QUESTIONS if question.id == "correspondence_address"
         )
     return next(
         (

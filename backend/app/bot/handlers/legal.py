@@ -36,6 +36,7 @@ from app.services.legal_rules import (
     answer_label,
     format_date,
     get_next_question,
+    get_question,
     parse_date,
 )
 from app.services.user_service import UserService
@@ -94,7 +95,7 @@ async def _ask_question(
     question: LegalQuestion,
     state: FSMContext,
 ) -> None:
-    if question.input_kind == "date":
+    if question.input_kind in {"date", "text"}:
         await state.set_state(LegalQuestionnaire.waiting_for_answer)
         await state.update_data(case_id=case_id, question_id=question.id)
         await safe_answer(
@@ -604,7 +605,13 @@ async def answer_date_question(
             violation_place,
         )
     except ValueError:
-        await safe_answer(message, "Отправьте дату в формате ДД.ММ.ГГГГ.")
+        question = get_question(str(question_id))
+        if question is not None and question.input_kind == "date":
+            await safe_answer(message, "Отправьте дату в формате ДД.ММ.ГГГГ.")
+        elif question is not None and question.input_kind == "text":
+            await safe_answer(message, "Отправьте адрес текстом, минимум 5 символов.")
+        else:
+            await safe_answer(message, "Ответ не подходит для текущего вопроса.")
         return
 
     if next_question is not None:

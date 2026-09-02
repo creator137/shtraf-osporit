@@ -164,6 +164,7 @@ async def test_legal_rules_and_case_assessment_api(
     assessment = await service.start(case.id)
     answers = {
         "appeal_received_at": "28.08.2026",
+        "correspondence_address": "Москва, Тверская улица, дом 1",
         "driver": "sold",
         "sale_docs": "yes",
         "vehicle_photo": "yes",
