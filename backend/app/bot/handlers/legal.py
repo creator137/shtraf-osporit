@@ -527,6 +527,7 @@ async def generate_ai_documents(
         await safe_answer(callback.message, str(exc))
         return
     except Exception:
+        logger.exception("Stage 4 document generation failed for case %s", case.id)
         await session.rollback()
         await safe_answer(callback.message, "Не удалось подготовить документы. Попробуйте повторить позже.")
         return
