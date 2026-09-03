@@ -229,13 +229,12 @@ def _result_text(assessment: LegalAssessment) -> str:
 
 def _analysis_keyboard(case_id: int, analysis: LegalAnalysis) -> InlineKeyboardMarkup:
     rows = []
-    for ground in analysis.grounds:
+    for index, ground in enumerate(analysis.grounds, start=1):
         ground_id = str(ground.get("id"))
-        title = str(ground.get("title") or ground_id)
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"Использовать: {title[:32]}",
+                    text=f"Использовать основание №{index}",
                     callback_data=f"ai:ground:{case_id}:{ground_id}:confirm",
                 )
             ]
@@ -243,7 +242,7 @@ def _analysis_keyboard(case_id: int, analysis: LegalAnalysis) -> InlineKeyboardM
         rows.append(
             [
                 InlineKeyboardButton(
-                    text=f"Не использовать: {title[:28]}",
+                    text=f"Не использовать основание №{index}",
                     callback_data=f"ai:ground:{case_id}:{ground_id}:reject",
                 )
             ]
@@ -264,9 +263,13 @@ def _analysis_text(analysis: LegalAnalysis) -> str:
     lines = [
         "Анализ ИИ завершён.",
         "",
-        str(result.get("summary") or "Система предложила возможные основания."),
+        "Система сопоставила ответы анкеты, данные постановления и результаты "
+        "проверки правил. Ниже указаны только направления, которые нужно "
+        "дополнительно проверить.",
         "",
-        str(result.get("overall_assessment") or "Оценка предварительная, без гарантии результата."),
+        "Это предварительная проверка по постановлению, ответам анкеты и "
+        "доступным материалам. Она не показывает вероятность отмены и не "
+        "является готовой жалобой.",
     ]
     if not analysis.grounds:
         lines.extend(["", "Валидные основания не найдены."])

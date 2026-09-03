@@ -22,6 +22,7 @@ from app.db.models import (
     Document,
     DocumentRecognition,
     GeneratedDocumentType,
+    LegalAnalysis,
     LegalAnalysisStatus,
     LegalAssessment,
     LegalAssessmentStatus,
@@ -935,6 +936,36 @@ async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
     assert review["overall_result"] == "Требуются дополнительные материалы"
     assert review["claims"][0]["result"] == "Требуются дополнительные материалы"
     assert "сведения о поверке комплекса" in review["missing_evidence"]
+
+
+def test_analysis_keyboard_uses_complete_numbered_labels():
+    from app.bot.handlers.legal import _analysis_keyboard
+
+    analysis = LegalAnalysis(
+        case_id=1,
+        provider="deepseek",
+        model="test",
+        grounds=[
+            {"id": "ground-long", "title": "Очень длинное название основания, которое нельзя обрезать"},
+            {"id": "ground-second", "title": "Второе основание"},
+        ],
+    )
+
+    keyboard = _analysis_keyboard(1, analysis)
+    labels = [
+        button.text
+        for row in keyboard.inline_keyboard
+        for button in row
+        if button.text
+    ]
+
+    assert labels[:4] == [
+        "Использовать основание №1",
+        "Не использовать основание №1",
+        "Использовать основание №2",
+        "Не использовать основание №2",
+    ]
+    assert all(len(label) < 40 for label in labels)
 
 
 @pytest.mark.asyncio
