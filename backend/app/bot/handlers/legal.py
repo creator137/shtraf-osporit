@@ -356,15 +356,11 @@ def _document_evidence_review_text(analysis: LegalAnalysis | None) -> str:
     if missing:
         lines.append("")
         lines.append("<b>Чего не хватает</b>")
-        lines.extend(f"• {escape(item)}" for item in missing[:6])
-        if len(missing) > 6:
-            lines.append(f"• И ещё пунктов: {len(missing) - 6}")
+        lines.extend(f"• {escape(item)}" for item in missing)
     if request_needed:
         lines.append("")
         lines.append("<b>Что будет сделано дальше</b>")
-        lines.extend(f"• {escape(item)}" for item in request_needed[:5])
-        if len(request_needed) > 5:
-            lines.append(f"• И ещё запросов: {len(request_needed) - 5}")
+        lines.extend(f"• {escape(item)}" for item in request_needed)
     lines.extend(
         [
             "",

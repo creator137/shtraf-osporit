@@ -549,6 +549,7 @@ def test_document_evidence_review_text_is_readable_and_deduplicated() -> None:
     assert "<b>Что уже подтверждено</b>" in text
     assert text.count("Фото или видео участка") == 1
     assert "И ещё пунктов" not in text
+    assert "Схема организации движения" in text
 
 
 def test_documents_ready_keyboard_explains_next_actions() -> None:
