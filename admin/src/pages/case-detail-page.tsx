@@ -93,6 +93,29 @@ function listValue(value: unknown): string[] {
     : []
 }
 
+const analysisStatusLabels: Record<string, string> = {
+  PENDING_CONFIRMATION: "Ожидает подтверждения",
+  CONFIRMED: "Основания подтверждены",
+  DOCUMENTS_GENERATED: "Документы сформированы",
+  FAILED: "Ошибка анализа",
+}
+
+const groundStatusLabels: Record<string, string> = {
+  PROPOSED: "Предложено системой",
+  CONFIRMED: "Подтверждено пользователем",
+  REJECTED: "Отклонено пользователем",
+}
+
+const sourceLabels: Record<string, string> = {
+  "koap-rf": "КоАП РФ",
+  "plenum-vs-20": "Постановление Пленума Верховного Суда РФ № 20",
+}
+
+const documentTypeLabels: Record<string, string> = {
+  COMPLAINT: "Жалоба на постановление",
+  EVIDENCE_PETITION: "Ходатайство об истребовании доказательств",
+}
+
 export function CaseDetailPage() {
   const { caseId = "" } = useParams()
   const navigate = useNavigate()
@@ -469,7 +492,7 @@ export function CaseDetailPage() {
 
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>AI Analysis</CardTitle>
+              <CardTitle>Юридический анализ</CardTitle>
               <CardDescription>
                 Предложенные основания, статусы подтверждения и недостающие доказательства.
               </CardDescription>
@@ -478,13 +501,19 @@ export function CaseDetailPage() {
               {!item.legal_analysis ? (
                 <EmptyState
                   icon={FileSearchIcon}
-                  title="AI-анализ ещё не выполнен"
-                  description="После анализа здесь появятся предложенные основания и audit-информация."
+                  title="Анализ ещё не выполнен"
+                  description="После анализа здесь появятся предложенные основания и сведения для проверки."
                 />
               ) : (
                 <div className="flex flex-col gap-4">
                   <dl className="flex flex-col gap-3">
-                    <DetailRow label="Статус" value={item.legal_analysis.status} />
+                    <DetailRow
+                      label="Статус"
+                      value={
+                        analysisStatusLabels[item.legal_analysis.status] ??
+                        "Статус не определён"
+                      }
+                    />
                     <DetailRow label="Модель" value={item.legal_analysis.model} />
                     <DetailRow
                       label="Итог"
@@ -509,25 +538,31 @@ export function CaseDetailPage() {
                             className="rounded-md border p-4 text-sm"
                           >
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge variant="outline">{textValue(ground.id)}</Badge>
                               <span className="font-semibold">
                                 {textValue(ground.title)}
                               </span>
                               <Badge variant="secondary">
-                                {textValue(ground.status)}
+                                {groundStatusLabels[textValue(ground.status)] ??
+                                  "Ожидает решения"}
                               </Badge>
                             </div>
                             <p className="mt-2 text-muted-foreground">
                               {textValue(ground.description)}
                             </p>
                             <p className="mt-2">
-                              Rules: {listValue(ground.legal_rule_ids).join(", ") || "нет"}
+                              Юридические правила:{" "}
+                              {listValue(ground.legal_rule_ids).join(", ") ||
+                                "не указаны"}
                             </p>
                             <p>
-                              Sources: {listValue(ground.source_ids).join(", ") || "нет"}
+                              Источники: {listValue(ground.source_ids)
+                                .map((source) => sourceLabels[source] ?? source)
+                                .join(", ") || "не указаны"}
                             </p>
                             <p>
-                              Missing: {listValue(ground.missing_evidence).join(", ") || "нет"}
+                              Что нужно дополнительно:{" "}
+                              {listValue(ground.missing_evidence).join(", ") ||
+                                "ничего"}
                             </p>
                           </div>
                         ))}
@@ -549,7 +584,7 @@ export function CaseDetailPage() {
 
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Generated Documents</CardTitle>
+              <CardTitle>Сформированные документы</CardTitle>
               <CardDescription>
                 Документы, сформированные по подтверждённым основаниям.
               </CardDescription>
@@ -574,7 +609,9 @@ export function CaseDetailPage() {
                   <TableBody>
                     {item.generated_documents.map((document) => (
                       <TableRow key={document.id}>
-                        <TableCell>{document.document_type}</TableCell>
+                        <TableCell>
+                          {documentTypeLabels[document.document_type] ?? "Документ"}
+                        </TableCell>
                         <TableCell>{document.file_format}</TableCell>
                         <TableCell>{formatDate(document.created_at)}</TableCell>
                         <TableCell className="text-right">

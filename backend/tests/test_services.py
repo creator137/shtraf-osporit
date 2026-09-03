@@ -13,7 +13,7 @@ from app.bot.handlers.cases import _case_detail_text
 from app.bot.handlers.cases import create_case
 from app.bot.handlers.documents import _save_document
 import app.bot.handlers.documents as document_handlers
-from app.bot.handlers.legal import _result_text, answer_date_question
+from app.bot.handlers.legal import _analysis_text, _result_text, answer_date_question
 from app.bot.states import LegalQuestionnaire
 from app.config import get_settings
 from app.db.models import (
@@ -453,7 +453,39 @@ def test_legal_result_explains_evidence_without_empty_technical_labels() -> None
     assert "Для подтверждения понадобятся: Фото или видео участка." in text
     assert "Есть: нет" not in text
     assert "Нужно запросить: нет" not in text
-    assert "Следующий шаг: запустите AI-анализ" in text
+    assert "Следующий шаг: запустите анализ ИИ" in text
+
+
+def test_ai_analysis_text_hides_internal_english_values() -> None:
+    analysis = SimpleNamespace(
+        result={
+            "summary": "Есть возможное основание для проверки.",
+            "overall_assessment": "Требуется подтверждение пользователя.",
+        },
+        grounds=[
+            {
+                "id": "ground-camera-check",
+                "title": "Проверка работы камеры",
+                "description": "Нужно проверить материалы фиксации.",
+                "supporting_fact_ids": ["answer_camera"],
+                "legal_rule_ids": ["A12"],
+                "source_ids": ["koap-rf"],
+                "missing_evidence": ["сведения о поверке"],
+                "status": LegalGroundStatus.PROPOSED.value,
+            }
+        ],
+    )
+
+    text = _analysis_text(analysis)
+
+    assert "Анализ ИИ завершён" in text
+    assert "Юридические правила: A12" in text
+    assert "Источники: КоАП РФ" in text
+    assert "Статус: Предложено системой" in text
+    assert "ground-camera-check" not in text
+    assert "answer_camera" not in text
+    assert "PROPOSED" not in text
+
 
 FIRST_TEN_SCENARIO_CASES = (
     ("A01", {"driver": "other", "driver_docs": "yes"}, {"driver": "owner"}, {"A02", "A03"}),

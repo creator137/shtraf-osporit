@@ -44,6 +44,17 @@ from app.services.user_service import UserService
 router = Router(name="legal")
 logger = logging.getLogger(__name__)
 
+GROUND_STATUS_LABELS = {
+    LegalGroundStatus.PROPOSED.value: "Предложено системой",
+    LegalGroundStatus.CONFIRMED.value: "Подтверждено пользователем",
+    LegalGroundStatus.REJECTED.value: "Отклонено пользователем",
+}
+
+SOURCE_LABELS = {
+    "koap-rf": "КоАП РФ",
+    "plenum-vs-20": "Постановление Пленума Верховного Суда РФ № 20",
+}
+
 
 def legal_start_button(case_id: int, *, completed: bool = False) -> InlineKeyboardButton:
     return InlineKeyboardButton(
@@ -135,7 +146,7 @@ def _result_keyboard(case_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="Запустить AI-анализ",
+                    text="Запустить анализ ИИ",
                     callback_data=f"ai:start:{case_id}",
                 )
             ],
@@ -210,7 +221,7 @@ def _result_text(assessment: LegalAssessment) -> str:
     lines.extend(
         [
             "",
-            "Следующий шаг: запустите AI-анализ. Он подготовит возможные доводы на основе результатов проверки, после чего вы сможете выбрать, какие из них использовать в жалобе.",
+            "Следующий шаг: запустите анализ ИИ. Он подготовит возможные доводы на основе результатов проверки, после чего вы сможете выбрать, какие из них использовать в жалобе.",
         ]
     )
     return "\n".join(lines)
@@ -251,7 +262,7 @@ def _analysis_keyboard(case_id: int, analysis: LegalAnalysis) -> InlineKeyboardM
 def _analysis_text(analysis: LegalAnalysis) -> str:
     result = analysis.result or {}
     lines = [
-        "AI-анализ завершён.",
+        "Анализ ИИ завершён.",
         "",
         str(result.get("summary") or "Система предложила возможные основания."),
         "",
@@ -262,27 +273,29 @@ def _analysis_text(analysis: LegalAnalysis) -> str:
         return "\n".join(lines)
 
     lines.extend(["", "Предложенные основания:"])
-    for ground in analysis.grounds:
+    for index, ground in enumerate(analysis.grounds, start=1):
+        rules = ", ".join(str(item) for item in ground.get("legal_rule_ids", []))
+        sources = ", ".join(
+            SOURCE_LABELS.get(str(item), str(item))
+            for item in ground.get("source_ids", [])
+        )
+        status = GROUND_STATUS_LABELS.get(
+            str(ground.get("status")), "Ожидает решения пользователя"
+        )
         lines.extend(
             [
                 "",
-                f"{ground.get('id')} · {ground.get('title')}",
+                f"{index}. {ground.get('title')}",
                 str(ground.get("description") or ""),
-                "На чем основано: "
-                + ", ".join(
-                    [
-                        *[f"факт {item}" for item in ground.get("supporting_fact_ids", [])],
-                        *[f"правило {item}" for item in ground.get("legal_rule_ids", [])],
-                        *[f"источник {item}" for item in ground.get("source_ids", [])],
-                    ]
-                ),
+                f"Юридические правила: {rules or 'не указаны'}.",
+                f"Источники: {sources or 'не указаны'}.",
                 "Что нужно дополнительно: "
                 + (
                     ", ".join(ground.get("missing_evidence", []))
                     if ground.get("missing_evidence")
                     else "нет"
                 ),
-                f"Статус: {ground.get('status')}",
+                f"Статус: {status}.",
             ]
         )
     return "\n".join(lines)
@@ -474,7 +487,7 @@ async def start_ai_analysis(
     if case is None:
         await safe_answer(callback.message, "Дело не найдено.")
         return
-    await safe_answer(callback.message, "Выполняю AI-анализ дела. Это может занять до минуты.")
+    await safe_answer(callback.message, "Выполняю анализ дела с помощью ИИ. Это может занять до минуты.")
     try:
         analysis = await LegalAnalysisService(session).analyze_case(case.id)
         await session.commit()
