@@ -326,6 +326,9 @@ async def begin_legal_assessment_for_case_message(
         case.id,
         violation_datetime=case.fine_notice.violation_datetime if case.fine_notice else None,
         notice_date=case.fine_notice.notice_date if case.fine_notice else None,
+        complaint_recipient=(
+            case.fine_notice.issuing_authority if case.fine_notice else None
+        ),
     )
     if assessment.status is LegalAssessmentStatus.COMPLETED:
         await safe_answer(
@@ -389,6 +392,9 @@ async def restart_assessment(
         case.id,
         violation_datetime=case.fine_notice.violation_datetime if case.fine_notice else None,
         notice_date=case.fine_notice.notice_date if case.fine_notice else None,
+        complaint_recipient=(
+            case.fine_notice.issuing_authority if case.fine_notice else None
+        ),
         restart=True,
     )
 

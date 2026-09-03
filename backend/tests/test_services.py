@@ -665,6 +665,25 @@ async def test_legal_assessment_saves_document_recipient_and_correspondence_addr
     )
 
 
+@pytest.mark.asyncio
+async def test_legal_assessment_prefills_recipient_from_notice(
+    db_session: AsyncSession,
+) -> None:
+    user = await UserService(db_session).get_or_create(
+        100_000_022, None, "Legal", "Recipient"
+    )
+    case = await CaseService(db_session).create(user.id)
+    assessment = await LegalAssessmentService(db_session).start_with_context(
+        case.id,
+        complaint_recipient="  ЦАФАП   ОДД ГИБДД  ",
+    )
+
+    assert assessment.answers["complaint_recipient"] == "ЦАФАП ОДД ГИБДД"
+    assert get_next_question(
+        {**assessment.answers, "appeal_received_at": "28.08.2026"}
+    ).id == "correspondence_address"
+
+
 async def _create_completed_stage_three_case(
     db_session: AsyncSession,
 ) -> Case:
@@ -797,10 +816,23 @@ async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
         GeneratedDocumentType.COMPLAINT,
         GeneratedDocumentType.EVIDENCE_PETITION,
     }
-    assert all("Отклоненное основание" not in prompt for prompt in fake_client.document_prompts)
+    assert all(
+        "Отклоненное основание" not in prompt
+        for prompt in fake_client.document_prompts
+    )
 
-    docx_document = next(document for document in documents if document.original_filename.endswith(".docx"))
-    pdf_document = next(document for document in documents if document.original_filename.endswith(".pdf"))
+    docx_document = next(
+        document
+        for document in documents
+        if document.document_type is GeneratedDocumentType.COMPLAINT
+        and document.original_filename.endswith(".docx")
+    )
+    pdf_document = next(
+        document
+        for document in documents
+        if document.document_type is GeneratedDocumentType.COMPLAINT
+        and document.original_filename.endswith(".pdf")
+    )
     docx_text = "\n".join(
         paragraph.text for paragraph in DocxDocument(tmp_path / docx_document.file_path).paragraphs
     )
@@ -814,6 +846,10 @@ async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
     assert "Прошу отменить постановление" in pdf_text
     assert "В Тверской районный суд города Москвы" in docx_text
     assert "В Тверской районный суд города Москвы" in pdf_text
+    assert "Подпись: ____________________" in docx_text
+    assert "Подпись: ____________________" in pdf_text
+    assert "Расшифровка: ____________________" in docx_text
+    assert "Расшифровка: ____________________" in pdf_text
     assert all(
         '"complaint_recipient": "Тверской районный суд города Москвы"' in prompt
         for prompt in fake_client.document_prompts

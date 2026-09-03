@@ -46,8 +46,9 @@ class GeneratedDocumentService:
         docx_path = case_dir / f"{base_name}.docx"
         pdf_path = case_dir / f"{base_name}.pdf"
 
-        _write_docx(docx_path, addressee, title, sections)
-        _write_pdf(pdf_path, addressee, title, sections)
+        include_signature = document_type is GeneratedDocumentType.COMPLAINT
+        _write_docx(docx_path, addressee, title, sections, include_signature)
+        _write_pdf(pdf_path, addressee, title, sections, include_signature)
 
         created = [
             GeneratedDocument(
@@ -81,7 +82,11 @@ def generated_file_path(document: GeneratedDocument) -> Path:
 
 
 def _write_docx(
-    path: Path, addressee: str, title: str, sections: list[str]
+    path: Path,
+    addressee: str,
+    title: str,
+    sections: list[str],
+    include_signature: bool,
 ) -> None:
     document = DocxDocument()
     section = document.sections[0]
@@ -100,11 +105,19 @@ def _write_docx(
         for paragraph in section_text.split("\n"):
             if paragraph.strip():
                 document.add_paragraph(paragraph.strip())
+    if include_signature:
+        document.add_paragraph()
+        document.add_paragraph("Подпись: ____________________")
+        document.add_paragraph("Расшифровка: ____________________")
     document.save(path)
 
 
 def _write_pdf(
-    path: Path, addressee: str, title: str, sections: list[str]
+    path: Path,
+    addressee: str,
+    title: str,
+    sections: list[str],
+    include_signature: bool,
 ) -> None:
     font_name = _register_cyrillic_font()
     styles = getSampleStyleSheet()
@@ -127,6 +140,15 @@ def _write_pdf(
                 wrapped = "<br/>".join(wrap(_escape_pdf_text(paragraph.strip()), 110))
                 story.append(Paragraph(wrapped, styles["Normal"]))
                 story.append(Spacer(1, 8))
+    if include_signature:
+        story.extend(
+            [
+                Spacer(1, 18),
+                Paragraph("Подпись: ____________________", styles["Normal"]),
+                Spacer(1, 8),
+                Paragraph("Расшифровка: ____________________", styles["Normal"]),
+            ]
+        )
     SimpleDocTemplate(
         str(path),
         pagesize=A4,

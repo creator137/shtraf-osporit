@@ -103,10 +103,17 @@ class LegalAssessmentService:
         *,
         violation_datetime: str | None = None,
         notice_date: str | None = None,
+        complaint_recipient: str | None = None,
         restart: bool = False,
     ) -> LegalAssessment:
         assessment = await self.start(case_id, restart=restart)
         violation_date = parse_date(violation_datetime) or parse_date(notice_date)
         assessment.rules_version = select_rules_version_for_date(violation_date)
+        normalized_recipient = " ".join((complaint_recipient or "").split())
+        if normalized_recipient and "complaint_recipient" not in assessment.answers:
+            assessment.answers = {
+                **assessment.answers,
+                "complaint_recipient": normalized_recipient,
+            }
         await self.session.flush()
         return assessment

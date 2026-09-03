@@ -127,6 +127,7 @@ class LegalAnalysisService:
         recipient = str(
             facts.get("complaint_recipient")
             or assessment_answers.get("complaint_recipient")
+            or (case.fine_notice.issuing_authority if case.fine_notice else None)
             or ""
         ).strip()
         if not recipient:
@@ -208,6 +209,7 @@ def build_analysis_context(case: Case, assessment: LegalAssessment) -> dict[str,
     correspondence_address = (assessment.answers.get("correspondence_address") or "").strip()
     complaint_recipient = (
         assessment.answers.get("complaint_recipient")
+        or (notice.issuing_authority if notice else None)
         or ""
     ).strip()
     facts = {
