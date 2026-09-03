@@ -328,28 +328,64 @@ def _document_evidence_review_text(analysis: LegalAnalysis | None) -> str:
         "INSUFFICIENT": "недостаточная",
     }
     claims = review.get("claims") if isinstance(review.get("claims"), list) else []
+    missing = _unique_review_items(review.get("missing_evidence"))
+    request_needed = _unique_review_items(review.get("request_needed"))
     lines = [
         "",
-        "Проверка комплекта доказательств по жалобе:",
-        f"Оценка достаточности: {level_labels.get(str(review.get('sufficiency_level')), 'не определена')}.",
-        str(review.get("overall_result") or review.get("summary") or "Итог не указан."),
+        "<b>Что означает результат проверки</b>",
+        "Комплект доказательств: "
+        f"<b>{level_labels.get(str(review.get('sufficiency_level')), 'не определена')}</b>.",
+        escape(
+            str(
+                review.get("overall_result")
+                or "Часть оснований требует дополнительных материалов."
+            )
+        ),
     ]
-    missing = review.get("missing_evidence")
-    if isinstance(missing, list) and missing:
-        lines.append("Не хватает: " + ", ".join(str(item) for item in missing))
-    request_needed = review.get("request_needed")
-    if isinstance(request_needed, list) and request_needed:
-        lines.append("Нужно запросить: " + ", ".join(str(item) for item in request_needed))
-    if claims:
-        lines.append("Проверенные утверждения:")
-        for claim in claims[:5]:
-            if not isinstance(claim, dict):
-                continue
-            lines.append(f"- {claim.get('claim')}: {claim.get('result')}")
-    lines.append(
-        "Формулировка 'доказано' не используется без подтверждающего материала."
+    supported_claims = [
+        str(claim.get("claim"))
+        for claim in claims
+        if isinstance(claim, dict)
+        and claim.get("result") == "Доказательств достаточно"
+        and claim.get("claim")
+    ]
+    if supported_claims:
+        lines.append("")
+        lines.append("<b>Что уже подтверждено</b>")
+        lines.extend(f"• {escape(item)}" for item in supported_claims[:3])
+    if missing:
+        lines.append("")
+        lines.append("<b>Чего не хватает</b>")
+        lines.extend(f"• {escape(item)}" for item in missing[:6])
+        if len(missing) > 6:
+            lines.append(f"• И ещё пунктов: {len(missing) - 6}")
+    if request_needed:
+        lines.append("")
+        lines.append("<b>Что будет сделано дальше</b>")
+        lines.extend(f"• {escape(item)}" for item in request_needed[:5])
+        if len(request_needed) > 5:
+            lines.append(f"• И ещё запросов: {len(request_needed) - 5}")
+    lines.extend(
+        [
+            "",
+            "Пожалуйста, проверьте скачанные документы. Это предварительный "
+            "проект, а не автоматически поданная жалоба.",
+        ]
     )
     return "\n".join(lines)
+
+
+def _unique_review_items(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        text = " ".join(str(item).split()).strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
 
 
 async def _case_for_callback(
@@ -623,14 +659,12 @@ async def generate_ai_documents(
         await safe_answer(callback.message, "Не удалось подготовить документы. Попробуйте повторить позже.")
         return
 
-    confirmed = case.legal_analysis.grounds if case.legal_analysis else []
-    missing_count = len(case.legal_analysis.missing_evidence) if case.legal_analysis else 0
     await safe_answer(
         callback.message,
-        "Документы готовы.\n\n"
-        f"Подтверждено оснований: {sum(1 for item in confirmed if item.get('status') == LegalGroundStatus.CONFIRMED.value)}\n"
-        f"Необходимы дополнительные доказательства: {missing_count}"
+        "<b>Документы готовы</b>\n\n"
+        "Жалоба и необходимые дополнительные документы отправлены выше."
         f"{_document_evidence_review_text(case.legal_analysis)}",
+        parse_mode=ParseMode.HTML,
         reply_markup=main_menu_keyboard(),
     )
     for document in documents:

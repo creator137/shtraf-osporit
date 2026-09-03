@@ -13,7 +13,12 @@ from app.bot.handlers.cases import _case_detail_text
 from app.bot.handlers.cases import create_case
 from app.bot.handlers.documents import _save_document
 import app.bot.handlers.documents as document_handlers
-from app.bot.handlers.legal import _analysis_text, _result_text, answer_date_question
+from app.bot.handlers.legal import (
+    _analysis_text,
+    _document_evidence_review_text,
+    _result_text,
+    answer_date_question,
+)
 from app.bot.states import LegalQuestionnaire
 from app.config import get_settings
 from app.db.models import (
@@ -510,6 +515,39 @@ def test_ai_analysis_text_hides_internal_english_values() -> None:
     assert "ground-camera-check" not in text
     assert "answer_camera" not in text
     assert "PROPOSED" not in text
+
+
+def test_document_evidence_review_text_is_readable_and_deduplicated() -> None:
+    analysis = SimpleNamespace(
+        result={
+            "document_evidence_review": {
+                "sufficiency_level": "PARTIAL",
+                "overall_result": "Требуются дополнительные материалы",
+                "missing_evidence": [
+                    "Фото или видео участка",
+                    "Фото или видео участка",
+                    "Схема организации движения",
+                ],
+                "request_needed": [
+                    "Запросить материалы фиксации",
+                    "Запросить материалы фиксации",
+                ],
+                "claims": [
+                    {
+                        "claim": "Постановление содержит данные о нарушении.",
+                        "result": "Доказательств достаточно",
+                    }
+                ],
+            }
+        }
+    )
+
+    text = _document_evidence_review_text(analysis)
+
+    assert "<b>Что означает результат проверки</b>" in text
+    assert "<b>Что уже подтверждено</b>" in text
+    assert text.count("Фото или видео участка") == 1
+    assert "И ещё пунктов" not in text
 
 
 FIRST_TEN_SCENARIO_CASES = (
