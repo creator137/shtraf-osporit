@@ -18,9 +18,9 @@ import type {
 import { formatDate } from "@/lib/format"
 
 const evidenceLabels: Record<EvidenceStatus, string> = {
-  AVAILABLE: "есть",
-  NEEDED: "не предоставлено",
-  VERIFY: "нужно запросить",
+  AVAILABLE: "Подтверждение есть",
+  NEEDED: "Нужны материалы",
+  VERIFY: "Нужно проверить",
 }
 
 export function LegalAssessmentView({
@@ -105,7 +105,9 @@ export function LegalAssessmentView({
       </div>
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold">Направления проверки</h3>
+        <h3 className="mb-2 text-sm font-semibold">
+          Результат предварительной проверки оснований для обжалования
+        </h3>
         {assessment.status !== "COMPLETED" ? (
           <p className="text-sm text-muted-foreground">
             Результат появится после завершения анкеты.
@@ -128,7 +130,7 @@ export function LegalAssessmentView({
                 </div>
                 <p className="mt-2 text-sm">{result.direction}</p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Почему: {(result.reasons ?? []).join(" ")}
+                  Почему выбрано это направление: {(result.reasons ?? []).join(" ")}
                 </p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {result.legal_basis}

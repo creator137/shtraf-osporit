@@ -9,7 +9,7 @@
 7. The architecture intentionally remains simple.
 8. Future functionality is not implemented in advance.
 9. Telegram business logic must not live directly in handlers.
-10. External providers are selected only when their stage begins; OCR.space is used for Stage 2, while an LLM provider is not selected yet.
+10. External providers are selected only when their stage begins; OCR.space is used for Stage 2 and DeepSeek is used for Stage 4 legal text analysis and document drafting.
 11. Stage 2 starts with OCR, basic field extraction, and manual correction only.
 12. Legal analysis, cancellation probability, and complaint generation remain outside Stage 2.
 13. Production runs on one small VPS with PostgreSQL bound to localhost.

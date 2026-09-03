@@ -120,9 +120,23 @@ class LegalAnalysisService:
         if not confirmed:
             raise ValueError("No confirmed legal grounds")
 
+        facts = dict(analysis.input_summary.get("facts", {}))
+        assessment_answers = (
+            case.legal_assessment.answers if case.legal_assessment else {}
+        )
+        recipient = str(
+            facts.get("complaint_recipient")
+            or assessment_answers.get("complaint_recipient")
+            or ""
+        ).strip()
+        if not recipient:
+            raise ValueError(
+                "Не указан адресат жалобы. Пройдите юридическую анкету заново и укажите, куда направить документ."
+            )
+        facts["complaint_recipient"] = recipient
         context = {
             "case": analysis.input_summary.get("case", {}),
-            "facts": analysis.input_summary.get("facts", {}),
+            "facts": facts,
             "questionnaire": analysis.input_summary.get("questionnaire", {}),
             "confirmed_grounds": confirmed,
             "missing_evidence": analysis.missing_evidence,
@@ -136,6 +150,7 @@ class LegalAnalysisService:
                 case=case,
                 analysis=analysis,
                 document_type=GeneratedDocumentType.COMPLAINT,
+                addressee=recipient,
                 title=complaint.title,
                 sections=complaint.sections,
             )
@@ -150,6 +165,7 @@ class LegalAnalysisService:
                     case=case,
                     analysis=analysis,
                     document_type=GeneratedDocumentType.EVIDENCE_PETITION,
+                    addressee=recipient,
                     title=petition.title,
                     sections=petition.sections,
                 )
@@ -190,6 +206,10 @@ class LegalAnalysisService:
 def build_analysis_context(case: Case, assessment: LegalAssessment) -> dict[str, Any]:
     notice = case.fine_notice
     correspondence_address = (assessment.answers.get("correspondence_address") or "").strip()
+    complaint_recipient = (
+        assessment.answers.get("complaint_recipient")
+        or ""
+    ).strip()
     facts = {
         "notice_number": notice.notice_number if notice else None,
         "notice_date": notice.notice_date if notice else None,
@@ -198,6 +218,7 @@ def build_analysis_context(case: Case, assessment: LegalAssessment) -> dict[str,
         "vehicle_plate": notice.vehicle_plate if notice else None,
         "violation_place": notice.violation_place if notice else None,
         "issuing_authority": notice.issuing_authority if notice else None,
+        "complaint_recipient": complaint_recipient or None,
         "fine_amount": notice.fine_amount if notice else None,
         "correspondence_address": correspondence_address or None,
     }

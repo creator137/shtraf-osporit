@@ -3,9 +3,11 @@ from textwrap import wrap
 from uuid import uuid4
 
 from docx import Document as DocxDocument
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.enums import TA_RIGHT
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -34,6 +36,7 @@ class GeneratedDocumentService:
         case: Case,
         analysis: LegalAnalysis,
         document_type: GeneratedDocumentType,
+        addressee: str,
         title: str,
         sections: list[str],
     ) -> list[GeneratedDocument]:
@@ -43,8 +46,8 @@ class GeneratedDocumentService:
         docx_path = case_dir / f"{base_name}.docx"
         pdf_path = case_dir / f"{base_name}.pdf"
 
-        _write_docx(docx_path, title, sections)
-        _write_pdf(pdf_path, title, sections)
+        _write_docx(docx_path, addressee, title, sections)
+        _write_pdf(pdf_path, addressee, title, sections)
 
         created = [
             GeneratedDocument(
@@ -77,7 +80,9 @@ def generated_file_path(document: GeneratedDocument) -> Path:
     return file_path
 
 
-def _write_docx(path: Path, title: str, sections: list[str]) -> None:
+def _write_docx(
+    path: Path, addressee: str, title: str, sections: list[str]
+) -> None:
     document = DocxDocument()
     section = document.sections[0]
     section.top_margin = Pt(56)
@@ -88,6 +93,8 @@ def _write_docx(path: Path, title: str, sections: list[str]) -> None:
     style.font.name = "Times New Roman"
     style.font.size = Pt(12)
 
+    addressee_paragraph = document.add_paragraph(_addressee_line(addressee))
+    addressee_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
     document.add_heading(title, level=1)
     for section_text in sections:
         for paragraph in section_text.split("\n"):
@@ -96,15 +103,24 @@ def _write_docx(path: Path, title: str, sections: list[str]) -> None:
     document.save(path)
 
 
-def _write_pdf(path: Path, title: str, sections: list[str]) -> None:
+def _write_pdf(
+    path: Path, addressee: str, title: str, sections: list[str]
+) -> None:
     font_name = _register_cyrillic_font()
     styles = getSampleStyleSheet()
     styles["Title"].fontName = font_name
     styles["Normal"].fontName = font_name
     styles["Normal"].fontSize = 11
     styles["Normal"].leading = 15
+    addressee_style = styles["Normal"].clone("Addressee")
+    addressee_style.alignment = TA_RIGHT
 
-    story = [Paragraph(_escape_pdf_text(title), styles["Title"]), Spacer(1, 12)]
+    story = [
+        Paragraph(_escape_pdf_text(_addressee_line(addressee)), addressee_style),
+        Spacer(1, 18),
+        Paragraph(_escape_pdf_text(title), styles["Title"]),
+        Spacer(1, 12),
+    ]
     for section_text in sections:
         for paragraph in section_text.split("\n"):
             if paragraph.strip():
@@ -141,3 +157,8 @@ def _escape_pdf_text(value: str) -> str:
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
+
+
+def _addressee_line(addressee: str) -> str:
+    value = " ".join(addressee.split())
+    return value if value.casefold().startswith("в ") else f"В {value}"

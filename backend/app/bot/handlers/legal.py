@@ -151,9 +151,10 @@ def _result_keyboard(case_id: int) -> InlineKeyboardMarkup:
 
 def _result_text(assessment: LegalAssessment) -> str:
     lines = [
-        "Предварительная юридическая проверка завершена.",
+        "Результат предварительной проверки оснований для обжалования",
         "",
-        "Это предварительная проверка, а не готовая жалоба и не гарантия отмены штрафа.",
+        "Система сопоставила ваши ответы с юридическими правилами и определила, что стоит проверить перед подготовкой жалобы.",
+        "Это не готовая жалоба и не гарантия отмены штрафа.",
     ]
     lines.extend(_appeal_summary(assessment.answers))
     if not assessment.results:
@@ -165,8 +166,8 @@ def _result_text(assessment: LegalAssessment) -> str:
         )
         return "\n".join(lines)
 
-    lines.extend(["", "Возможные направления:"])
-    for result in assessment.results:
+    lines.extend(["", "Что стоит проверить:"])
+    for index, result in enumerate(assessment.results, start=1):
         evidence_items = result.get("evidence_items", [])
         available = [
             str(item.get("name"))
@@ -186,15 +187,32 @@ def _result_text(assessment: LegalAssessment) -> str:
         lines.extend(
             [
                 "",
-                f"{result['code']} · {result['title']}",
-                str(result["direction"]),
-                f"Почему: {', '.join(result.get('reasons', []))}.",
-                f"Есть: {', '.join(available) if available else 'нет'}.",
-                f"Не предоставлено: {', '.join(missing) if missing else 'нет'}.",
-                f"Нужно запросить: {', '.join(verify) if verify else 'нет'}.",
-                "Дальше: соберите недостающие материалы и проверьте указанные сведения.",
+                f"{index}. {result['title']}",
+                f"Что проверить: {result['direction']}",
+                "Почему выбрано это направление: "
+                + " ".join(result.get("reasons", [])),
             ]
         )
+        if available:
+            lines.append(f"Уже есть для подтверждения: {', '.join(available)}.")
+        if missing:
+            lines.append(
+                "Для подтверждения понадобятся: " + ", ".join(missing) + "."
+            )
+        if verify:
+            lines.append(
+                "Следует запросить или дополнительно проверить: "
+                + ", ".join(verify)
+                + "."
+            )
+        if not available and not missing and not verify:
+            lines.append("Дополнительные материалы по этому направлению не указаны.")
+    lines.extend(
+        [
+            "",
+            "Следующий шаг: запустите AI-анализ. Он подготовит возможные доводы на основе результатов проверки, после чего вы сможете выбрать, какие из них использовать в жалобе.",
+        ]
+    )
     return "\n".join(lines)
 
 

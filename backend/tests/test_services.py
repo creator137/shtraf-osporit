@@ -13,7 +13,7 @@ from app.bot.handlers.cases import _case_detail_text
 from app.bot.handlers.cases import create_case
 from app.bot.handlers.documents import _save_document
 import app.bot.handlers.documents as document_handlers
-from app.bot.handlers.legal import answer_date_question
+from app.bot.handlers.legal import _result_text, answer_date_question
 from app.bot.states import LegalQuestionnaire
 from app.config import get_settings
 from app.db.models import (
@@ -358,7 +358,8 @@ def test_legal_rules_derive_directions_and_evidence_from_answers() -> None:
     results = evaluate_rules(
         {
             "appeal_received_at": "28.08.2026",
-        "correspondence_address": "Москва, Тверская улица, дом 1",
+            "complaint_recipient": "Тверской районный суд города Москвы",
+            "correspondence_address": "Москва, Тверская улица, дом 1",
             "driver": "other",
             "driver_docs": "yes",
             "vehicle_photo": "different",
@@ -392,7 +393,8 @@ def test_extended_stage_three_scenarios_are_evaluated() -> None:
     results = evaluate_rules(
         {
             "appeal_received_at": "28.08.2026",
-        "correspondence_address": "Москва, Тверская улица, дом 1",
+            "complaint_recipient": "Тверской районный суд города Москвы",
+            "correspondence_address": "Москва, Тверская улица, дом 1",
             "driver": "lost",
             "possession_docs": "yes",
             "vehicle_photo": "no_photo",
@@ -421,6 +423,38 @@ def test_extended_stage_three_scenarios_are_evaluated() -> None:
     assert by_code["A10"]["evidence_status"] == EvidenceStatus.NEEDED.value
     assert by_code["A18"]["evidence_status"] == EvidenceStatus.VERIFY.value
 
+
+def test_legal_result_explains_evidence_without_empty_technical_labels() -> None:
+    assessment = LegalAssessment(
+        answers={"appeal_received_at": "28.08.2026"},
+        results=[
+            {
+                "code": "A10",
+                "title": "Дорожная разметка отсутствовала или была не видна",
+                "direction": "Проверить состояние разметки на участке нарушения.",
+                "reasons": ["Вы указали, что разметка отсутствовала."],
+                "evidence_items": [
+                    {
+                        "name": "Фото или видео участка",
+                        "status": EvidenceStatus.NEEDED.value,
+                    }
+                ],
+            }
+        ],
+    )
+
+    text = _result_text(assessment)
+
+    assert text.startswith(
+        "Результат предварительной проверки оснований для обжалования"
+    )
+    assert "Что проверить:" in text
+    assert "Почему выбрано это направление:" in text
+    assert "Для подтверждения понадобятся: Фото или видео участка." in text
+    assert "Есть: нет" not in text
+    assert "Нужно запросить: нет" not in text
+    assert "Следующий шаг: запустите AI-анализ" in text
+
 FIRST_TEN_SCENARIO_CASES = (
     ("A01", {"driver": "other", "driver_docs": "yes"}, {"driver": "owner"}, {"A02", "A03"}),
     ("A02", {"driver": "sold", "sale_docs": "yes"}, {"driver": "owner"}, {"A01", "A03"}),
@@ -436,6 +470,7 @@ FIRST_TEN_SCENARIO_CASES = (
 
 BASE_NEGATIVE_LEGAL_ANSWERS = {
     "appeal_received_at": "28.08.2026",
+    "complaint_recipient": "Тверской районный суд города Москвы",
     "correspondence_address": "Москва, Тверская улица, дом 1",
     "driver": "owner",
     "vehicle_photo": "yes",
@@ -491,10 +526,11 @@ def test_legal_questionnaire_branches_on_factual_answer() -> None:
     assert get_next_question({}).id == "appeal_received_at"
     answers = {
         "appeal_received_at": "28.08.2026",
+        "complaint_recipient": "Тверской районный суд города Москвы",
         "correspondence_address": "Москва, Тверская улица, дом 1",
     }
     assert get_next_question({"appeal_received_at": "28.08.2026"}).id == (
-        "correspondence_address"
+        "complaint_recipient"
     )
     assert get_next_question(answers).id == "driver"
     assert get_next_question({**answers, "driver": "owner"}).id == "vehicle_photo"
@@ -511,12 +547,13 @@ def test_overdue_appeal_questions_are_asked_first() -> None:
             "appeal_received_at": "10.08.2026",
             "appeal_delay_reason": "late_receipt",
         }
-    ).id == "correspondence_address"
+    ).id == "complaint_recipient"
 
 
 def test_non_speed_notice_skips_speed_questions_and_rule() -> None:
     answers = {
         "appeal_received_at": "28.08.2026",
+        "complaint_recipient": "Тверской районный суд города Москвы",
         "correspondence_address": "Москва, Тверская улица, дом 1",
         "driver": "owner",
         "vehicle_photo": "yes",
@@ -560,6 +597,7 @@ async def test_legal_assessment_persists_completed_result(
     assessment = await service.start(case.id)
     answers = {
         "appeal_received_at": "28.08.2026",
+        "complaint_recipient": "Тверской районный суд города Москвы",
         "correspondence_address": "Москва, Тверская улица, дом 1",
         "driver": "other",
         "driver_docs": "yes",
@@ -591,7 +629,7 @@ async def test_legal_assessment_persists_completed_result(
 
 
 @pytest.mark.asyncio
-async def test_legal_assessment_saves_correspondence_address(
+async def test_legal_assessment_saves_document_recipient_and_correspondence_address(
     db_session: AsyncSession,
 ) -> None:
     user = await UserService(db_session).get_or_create(
@@ -604,12 +642,24 @@ async def test_legal_assessment_saves_correspondence_address(
     await service.answer(assessment, "appeal_received_at", "28.08.2026")
     next_question = await service.answer(
         assessment,
+        "complaint_recipient",
+        "  Тверской   районный суд города Москвы  ",
+    )
+
+    assert next_question is not None
+    assert next_question.id == "correspondence_address"
+
+    next_question = await service.answer(
+        assessment,
         "correspondence_address",
         "  Москва,   Тверская улица, дом 1  ",
     )
 
     assert next_question is not None
     assert next_question.id == "driver"
+    assert assessment.answers["complaint_recipient"] == (
+        "Тверской районный суд города Москвы"
+    )
     assert assessment.answers["correspondence_address"] == (
         "Москва, Тверская улица, дом 1"
     )
@@ -637,6 +687,7 @@ async def _create_completed_stage_three_case(
     )
     answers = {
         "appeal_received_at": "02.09.2026",
+        "complaint_recipient": "Тверской районный суд города Москвы",
         "correspondence_address": "Москва, Тверская улица, дом 1",
         "driver": "owner",
         "vehicle_photo": "yes",
@@ -682,6 +733,9 @@ async def test_legal_analysis_filters_unknown_rules_sources_and_facts(
     assert analysis.grounds[0]["source_ids"] == ["koap-rf"]
     assert "сведения о поверке комплекса" in analysis.missing_evidence
     assert analysis.input_summary["case"]["facts"]["vehicle_plate"] == "А000АА00"
+    assert analysis.input_summary["facts"]["complaint_recipient"] == (
+        "Тверской районный суд города Москвы"
+    )
 
 
 @pytest.mark.asyncio
@@ -758,6 +812,12 @@ async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
 
     assert "Прошу отменить постановление" in docx_text
     assert "Прошу отменить постановление" in pdf_text
+    assert "В Тверской районный суд города Москвы" in docx_text
+    assert "В Тверской районный суд города Москвы" in pdf_text
+    assert all(
+        '"complaint_recipient": "Тверской районный суд города Москвы"' in prompt
+        for prompt in fake_client.document_prompts
+    )
 
 
 @pytest.mark.asyncio
