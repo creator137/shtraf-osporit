@@ -93,6 +93,21 @@ function listValue(value: unknown): string[] {
     : []
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function recordListValue(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const record = recordValue(item)
+        return record ? [record] : []
+      })
+    : []
+}
+
 const analysisStatusLabels: Record<string, string> = {
   PENDING_CONFIRMATION: "Ожидает подтверждения",
   CONFIRMED: "Основания подтверждены",
@@ -114,6 +129,12 @@ const sourceLabels: Record<string, string> = {
 const documentTypeLabels: Record<string, string> = {
   COMPLAINT: "Жалоба на постановление",
   EVIDENCE_PETITION: "Ходатайство об истребовании доказательств",
+}
+
+const sufficiencyLabels: Record<string, string> = {
+  HIGH: "Высокая",
+  PARTIAL: "Частичная",
+  INSUFFICIENT: "Недостаточная",
 }
 
 export function CaseDetailPage() {
@@ -577,6 +598,78 @@ export function CaseDetailPage() {
                       {item.legal_analysis.missing_evidence.join(", ") || "Нет"}
                     </p>
                   </div>
+                  {item.legal_analysis.document_evidence_review ? (
+                    <div className="flex flex-col gap-3 rounded-md border p-4 text-sm">
+                      {(() => {
+                        const review = item.legal_analysis.document_evidence_review
+                        const claims = recordListValue(review.claims)
+                        return (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-semibold">
+                                Проверка доказательств по жалобе
+                              </h3>
+                              <Badge variant="secondary">
+                                {sufficiencyLabels[
+                                  textValue(review.sufficiency_level)
+                                ] ?? "Не определена"}
+                              </Badge>
+                            </div>
+                            <p className="text-muted-foreground">
+                              {textValue(review.overall_result) ||
+                                textValue(review.summary) ||
+                                "Итог проверки не указан."}
+                            </p>
+                            <DetailRow
+                              label="Не хватает"
+                              value={
+                                listValue(review.missing_evidence).join(", ") ||
+                                "Нет"
+                              }
+                            />
+                            <DetailRow
+                              label="Запросить"
+                              value={
+                                listValue(review.request_needed).join(", ") ||
+                                "Нет"
+                              }
+                            />
+                            {claims.length > 0 ? (
+                              <div className="flex flex-col gap-2">
+                                <h4 className="font-medium">
+                                  Утверждения жалобы
+                                </h4>
+                                {claims.map((claim, index) => (
+                                  <div
+                                    key={`${textValue(claim.claim)}-${index}`}
+                                    className="rounded-md border p-3"
+                                  >
+                                    <p className="font-medium">
+                                      {textValue(claim.claim) || "Утверждение"}
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                      {textValue(claim.result) ||
+                                        "Результат не указан"}
+                                    </p>
+                                    <p>
+                                      Подтверждено: {" "}
+                                      {listValue(claim.confirmed_by).join(", ") ||
+                                        "нет"}
+                                    </p>
+                                    <p>
+                                      Не хватает: {" "}
+                                      {listValue(claim.missing_evidence).join(", ") ||
+                                        "нет"}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ) : null}
                 </div>
               )}
             </CardContent>

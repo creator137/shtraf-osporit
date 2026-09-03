@@ -12,6 +12,9 @@ This file defines the currently paid/development scope.
 - Telegram confirmation/rejection flow for proposed grounds.
 - Generation of an individual complaint and, when relevant, a petition to
   request missing evidence.
+- A second evidence sufficiency review after complaint generation. The review
+  lists the complaint's material claims, their supporting files or answers,
+  missing evidence, and information that should be requested.
 - DOCX and PDF output saved as case files and sent to the user.
 - Minimal read-only admin visibility for AI analysis and generated documents.
 
@@ -23,6 +26,28 @@ arguments and known facts.
 
 AI output must not introduce new legal sources, case facts, camera properties,
 or user answers. Unknown data must stay marked as missing or requiring request.
+
+## Final Evidence Review
+
+After the complaint draft is generated, Stage 4 runs a separate structured
+review. For each material claim it records:
+
+- what the complaint asserts;
+- which uploaded file, OCR fact, or user answer supports it;
+- which evidence is missing;
+- which information should be requested;
+- one of the results: `Доказательств достаточно`, `Требуются дополнительные
+  материалы`, or `Основание подтверждено только словами пользователя`.
+
+The overall evidence sufficiency is shown as `высокая`, `частичная`, or
+`недостаточная`. Cancellation probability and percentage scores are not shown.
+The system also sanitizes generated wording so that `доказано` is not used for
+an unsupported assertion. This review is an internal preliminary control and
+does not replace legal acceptance.
+
+The review is stored in `LegalAnalysis.result.document_evidence_review`,
+displayed in the case card in the admin panel, and summarized in Telegram after
+the documents are prepared.
 
 ## Excluded From Stage 4
 

@@ -62,7 +62,11 @@ class FakeDeepSeekClient:
         self.document_prompts: list[str] = []
 
     async def complete_json(self, *, system_prompt, user_prompt, schema):
-        from app.ai.schemas import GeneratedLegalDocument, LegalAnalysisResult
+        from app.ai.schemas import (
+            DocumentEvidenceReview,
+            GeneratedLegalDocument,
+            LegalAnalysisResult,
+        )
 
         if schema is LegalAnalysisResult:
             return LegalAnalysisResult(
@@ -109,6 +113,26 @@ class FakeDeepSeekClient:
                 ],
             )
 
+        if schema is DocumentEvidenceReview:
+            return DocumentEvidenceReview(
+                claims=[
+                    {
+                        "claim": "Комплекс фиксации требует проверки поверки.",
+                        "confirmed_by": [
+                            "ответ пользователя: есть сомнения в поверке",
+                        ],
+                        "missing_evidence": ["сведения о поверке комплекса"],
+                        "request_needed": ["свидетельство о поверке комплекса"],
+                        "result": "Требуются дополнительные материалы",
+                    }
+                ],
+                missing_evidence=["сведения о поверке комплекса"],
+                request_needed=["свидетельство о поверке комплекса"],
+                overall_result="Требуются дополнительные материалы",
+                sufficiency_level="PARTIAL",
+                summary="Жалоба опирается на ответ пользователя и требует запроса материалов.",
+            )
+
         assert schema is GeneratedLegalDocument
         self.document_prompts.append(user_prompt)
         assert "Отклоненное основание" not in user_prompt
@@ -116,7 +140,7 @@ class FakeDeepSeekClient:
             title="Жалоба на постановление",
             sections=[
                 "Прошу отменить постановление по делу о штрафе.",
-                "Используется только подтвержденное основание: Проверка поверки комплекса.",
+                "Доказано подтвержденное основание: Проверка поверки комплекса.",
             ],
         )
 
@@ -876,6 +900,10 @@ async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
 
     assert "Прошу отменить постановление" in docx_text
     assert "Прошу отменить постановление" in pdf_text
+    assert "Доказано" not in docx_text
+    assert "Доказано" not in pdf_text
+    assert "заявлено пользователем и требует проверки" in docx_text
+    assert "заявлено пользователем и требует проверки" in pdf_text
     assert "В Тверской районный суд города Москвы" in docx_text
     assert "В Тверской районный суд города Москвы" in pdf_text
     assert "Подпись: ____________________" in docx_text
@@ -902,6 +930,11 @@ async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
         '"complaint_recipient": "Тверской районный суд города Москвы"' in prompt
         for prompt in fake_client.document_prompts
     )
+    review = analysis.result["document_evidence_review"]
+    assert review["sufficiency_level"] == "PARTIAL"
+    assert review["overall_result"] == "Требуются дополнительные материалы"
+    assert review["claims"][0]["result"] == "Требуются дополнительные материалы"
+    assert "сведения о поверке комплекса" in review["missing_evidence"]
 
 
 @pytest.mark.asyncio

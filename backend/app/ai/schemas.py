@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -24,3 +26,28 @@ class LegalAnalysisResult(BaseModel):
 class GeneratedLegalDocument(BaseModel):
     title: str = Field(min_length=1)
     sections: list[str] = Field(min_length=1)
+
+
+class DocumentClaimEvidenceCheck(BaseModel):
+    claim: str = Field(min_length=1)
+    confirmed_by: list[str] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    request_needed: list[str] = Field(default_factory=list)
+    result: Literal[
+        "Доказательств достаточно",
+        "Требуются дополнительные материалы",
+        "Основание подтверждено только словами пользователя",
+    ]
+
+
+class DocumentEvidenceReview(BaseModel):
+    claims: list[DocumentClaimEvidenceCheck] = Field(default_factory=list)
+    missing_evidence: list[str] = Field(default_factory=list)
+    request_needed: list[str] = Field(default_factory=list)
+    overall_result: Literal[
+        "Доказательств достаточно",
+        "Требуются дополнительные материалы",
+        "Основание подтверждено только словами пользователя",
+    ]
+    sufficiency_level: str = Field(pattern="^(HIGH|PARTIAL|INSUFFICIENT)$")
+    summary: str = Field(min_length=1)

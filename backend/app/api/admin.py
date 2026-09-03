@@ -167,6 +167,7 @@ class LegalAnalysisItem(BaseModel):
     overall_assessment: str | None
     grounds: list[dict[str, object]]
     missing_evidence: list[str]
+    document_evidence_review: dict[str, object] | None
     created_at: datetime
     updated_at: datetime
 
@@ -715,6 +716,11 @@ def legal_analysis_item(analysis: LegalAnalysis | None) -> LegalAnalysisItem | N
         ),
         grounds=analysis.grounds,
         missing_evidence=analysis.missing_evidence,
+        document_evidence_review=(
+            result.get("document_evidence_review")
+            if isinstance(result.get("document_evidence_review"), dict)
+            else None
+        ),
         created_at=analysis.created_at,
         updated_at=analysis.updated_at,
     )

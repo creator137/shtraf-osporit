@@ -117,6 +117,7 @@ export interface LegalAnalysisItem {
   overall_assessment: string | null
   grounds: Array<Record<string, unknown>>
   missing_evidence: string[]
+  document_evidence_review: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }

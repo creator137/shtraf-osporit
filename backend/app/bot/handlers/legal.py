@@ -301,6 +301,42 @@ def _analysis_text(analysis: LegalAnalysis) -> str:
     return "\n".join(lines)
 
 
+def _document_evidence_review_text(analysis: LegalAnalysis | None) -> str:
+    if analysis is None:
+        return ""
+    review = (analysis.result or {}).get("document_evidence_review")
+    if not isinstance(review, dict):
+        return ""
+    level_labels = {
+        "HIGH": "высокая",
+        "PARTIAL": "частичная",
+        "INSUFFICIENT": "недостаточная",
+    }
+    claims = review.get("claims") if isinstance(review.get("claims"), list) else []
+    lines = [
+        "",
+        "Проверка комплекта доказательств по жалобе:",
+        f"Оценка достаточности: {level_labels.get(str(review.get('sufficiency_level')), 'не определена')}.",
+        str(review.get("overall_result") or review.get("summary") or "Итог не указан."),
+    ]
+    missing = review.get("missing_evidence")
+    if isinstance(missing, list) and missing:
+        lines.append("Не хватает: " + ", ".join(str(item) for item in missing))
+    request_needed = review.get("request_needed")
+    if isinstance(request_needed, list) and request_needed:
+        lines.append("Нужно запросить: " + ", ".join(str(item) for item in request_needed))
+    if claims:
+        lines.append("Проверенные утверждения:")
+        for claim in claims[:5]:
+            if not isinstance(claim, dict):
+                continue
+            lines.append(f"- {claim.get('claim')}: {claim.get('result')}")
+    lines.append(
+        "Формулировка 'доказано' не используется без подтверждающего материала."
+    )
+    return "\n".join(lines)
+
+
 async def _case_for_callback(
     callback: CallbackQuery, case_id: int, session: AsyncSession
 ):
@@ -576,7 +612,8 @@ async def generate_ai_documents(
         callback.message,
         "Документы готовы.\n\n"
         f"Подтверждено оснований: {sum(1 for item in confirmed if item.get('status') == LegalGroundStatus.CONFIRMED.value)}\n"
-        f"Необходимы дополнительные доказательства: {missing_count}",
+        f"Необходимы дополнительные доказательства: {missing_count}"
+        f"{_document_evidence_review_text(case.legal_analysis)}",
         reply_markup=main_menu_keyboard(),
     )
     for document in documents:

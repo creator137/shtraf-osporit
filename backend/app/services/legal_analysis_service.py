@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any
 
 from sqlalchemy import select
@@ -9,10 +10,16 @@ from app.ai.deepseek_client import DeepSeekClient
 from app.ai.prompts import (
     ANALYSIS_SYSTEM_PROMPT,
     ANALYSIS_USER_TEMPLATE,
+    DOCUMENT_EVIDENCE_REVIEW_SYSTEM_PROMPT,
+    DOCUMENT_EVIDENCE_REVIEW_USER_TEMPLATE,
     DOCUMENT_SYSTEM_PROMPT,
     DOCUMENT_USER_TEMPLATE,
 )
-from app.ai.schemas import GeneratedLegalDocument, LegalAnalysisResult
+from app.ai.schemas import (
+    DocumentEvidenceReview,
+    GeneratedLegalDocument,
+    LegalAnalysisResult,
+)
 from app.config import get_settings
 from app.db.models import (
     Case,
@@ -143,9 +150,32 @@ class LegalAnalysisService:
             "missing_evidence": analysis.missing_evidence,
             "legal_rules": analysis.input_summary.get("legal_rules", []),
             "legal_sources": analysis.input_summary.get("legal_sources", []),
+            "uploaded_documents": [
+                {
+                    "id": f"document:{document.id}",
+                    "original_filename": document.original_filename,
+                    "mime_type": document.mime_type,
+                    "local_file_available": bool(document.local_path),
+                    "ocr_text": (
+                        document.recognition.raw_text[:12_000]
+                        if document.recognition and document.recognition.raw_text
+                        else None
+                    ),
+                }
+                for document in case.documents
+            ],
         }
         documents: list[GeneratedDocument] = []
         complaint = await self._generate_document(context, "жалобу на постановление")
+        complaint = _soften_unverified_proof_wording(complaint)
+        evidence_review = await self._review_document_evidence(
+            context=context,
+            complaint=complaint,
+        )
+        analysis.result = {
+            **(analysis.result or {}),
+            "document_evidence_review": evidence_review.model_dump(),
+        }
         documents.extend(
             await GeneratedDocumentService(self.session).save_pair(
                 case=case,
@@ -157,9 +187,11 @@ class LegalAnalysisService:
             )
         )
         if analysis.missing_evidence:
-            petition = await self._generate_document(
-                context,
-                "ходатайство об истребовании доказательств",
+            petition = _soften_unverified_proof_wording(
+                await self._generate_document(
+                    context,
+                    "ходатайство об истребовании доказательств",
+                )
             )
             documents.extend(
                 await GeneratedDocumentService(self.session).save_pair(
@@ -189,6 +221,27 @@ class LegalAnalysisService:
         )
         assert isinstance(result, GeneratedLegalDocument)
         return result
+
+    async def _review_document_evidence(
+        self,
+        *,
+        context: dict[str, Any],
+        complaint: GeneratedLegalDocument,
+    ) -> DocumentEvidenceReview:
+        review_context = {
+            **context,
+            "generated_complaint": complaint.model_dump(),
+        }
+        user_prompt = DOCUMENT_EVIDENCE_REVIEW_USER_TEMPLATE.format(
+            context_json=json.dumps(review_context, ensure_ascii=False, indent=2)
+        )
+        result = await self.client.complete_json(
+            system_prompt=DOCUMENT_EVIDENCE_REVIEW_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            schema=DocumentEvidenceReview,
+        )
+        assert isinstance(result, DocumentEvidenceReview)
+        return sanitize_document_evidence_review(result, context)
 
     async def _load_case(self, case_id: int) -> Case | None:
         return await self.session.scalar(
@@ -257,6 +310,20 @@ def build_analysis_context(case: Case, assessment: LegalAssessment) -> dict[str,
         "unknown_facts": [
             key for key, value in facts.items() if value in {None, ""}
         ],
+        "uploaded_documents": [
+            {
+                "id": f"document:{document.id}",
+                "original_filename": document.original_filename,
+                "mime_type": document.mime_type,
+                "local_file_available": bool(document.local_path),
+                "ocr_text": (
+                    document.recognition.raw_text[:12_000]
+                    if document.recognition and document.recognition.raw_text
+                    else None
+                ),
+            }
+            for document in case.documents
+        ],
     }
 
 
@@ -298,4 +365,118 @@ def sanitize_analysis_result(
         missing_evidence=missing,
         additional_questions=result.additional_questions[:5],
         overall_assessment=result.overall_assessment,
+    )
+
+
+def sanitize_document_evidence_review(
+    review: DocumentEvidenceReview,
+    context: dict[str, Any],
+) -> DocumentEvidenceReview:
+    known_missing = {
+        str(item)
+        for item in context.get("missing_evidence", [])
+        if str(item).strip()
+    }
+    claim_missing = {
+        item
+        for claim in review.claims
+        for item in claim.missing_evidence
+        if item.strip()
+    }
+    claim_requests = {
+        item
+        for claim in review.claims
+        for item in claim.request_needed
+        if item.strip()
+    }
+    missing_evidence = sorted(
+        {
+            *known_missing,
+            *claim_missing,
+            *[item for item in review.missing_evidence if item.strip()],
+        }
+    )
+    request_needed = sorted(
+        {
+            *claim_requests,
+            *[item for item in review.request_needed if item.strip()],
+        }
+    )
+    if missing_evidence and review.sufficiency_level == "HIGH":
+        sufficiency_level = "PARTIAL"
+    else:
+        sufficiency_level = review.sufficiency_level
+    claims = []
+    for claim in review.claims:
+        confirmed_by = [
+            _soften_proof_wording(item)
+            for item in claim.confirmed_by
+            if item.strip()
+        ]
+        claim_missing = [
+            _soften_proof_wording(item)
+            for item in claim.missing_evidence
+            if item.strip()
+        ]
+        claim_requests = [
+            _soften_proof_wording(item)
+            for item in claim.request_needed
+            if item.strip()
+        ]
+        claim_result = claim.result
+        if not confirmed_by and claim_result == "Доказательств достаточно":
+            claim_result = (
+                "Основание подтверждено только словами пользователя"
+                if any("ответ" in item.lower() for item in claim_missing)
+                else "Требуются дополнительные материалы"
+            )
+        claims.append(
+            claim.model_copy(
+                update={
+                    "claim": _soften_proof_wording(claim.claim),
+                    "confirmed_by": confirmed_by,
+                    "missing_evidence": claim_missing,
+                    "request_needed": claim_requests,
+                    "result": claim_result,
+                }
+            )
+        )
+
+    overall_result = review.overall_result
+    if missing_evidence and overall_result == "Доказательств достаточно":
+        overall_result = "Требуются дополнительные материалы"
+    if claims and all(
+        claim.result == "Основание подтверждено только словами пользователя"
+        for claim in claims
+    ):
+        overall_result = "Основание подтверждено только словами пользователя"
+
+    return review.model_copy(
+        update={
+            "missing_evidence": missing_evidence,
+            "request_needed": request_needed,
+            "sufficiency_level": sufficiency_level,
+            "overall_result": overall_result,
+            "claims": claims,
+            "summary": _soften_proof_wording(review.summary),
+        }
+    )
+
+
+def _soften_unverified_proof_wording(
+    document: GeneratedLegalDocument,
+) -> GeneratedLegalDocument:
+    sections = []
+    for section in document.sections:
+        value = _soften_proof_wording(section)
+        sections.append(value)
+    return document.model_copy(update={"sections": sections})
+
+
+def _soften_proof_wording(value: str) -> str:
+    return re.sub(
+        r"\bдоказан\w*\b",
+        "заявлено пользователем и требует проверки",
+        value,
+        flags=re.IGNORECASE,
     )
