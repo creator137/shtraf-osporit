@@ -1,7 +1,9 @@
 import logging
 from datetime import timedelta
+from html import escape
 
 from aiogram import F, Router
+from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
 from aiogram.types import (
     CallbackQuery,
@@ -275,30 +277,40 @@ def _analysis_text(analysis: LegalAnalysis) -> str:
         lines.extend(["", "Валидные основания не найдены."])
         return "\n".join(lines)
 
-    lines.extend(["", "Предложенные основания:"])
+    lines.extend(["", "<b>Выберите основание для жалобы:</b>"])
     for index, ground in enumerate(analysis.grounds, start=1):
         rules = ", ".join(str(item) for item in ground.get("legal_rule_ids", []))
         sources = ", ".join(
             SOURCE_LABELS.get(str(item), str(item))
             for item in ground.get("source_ids", [])
         )
+        ground_status = str(ground.get("status"))
         status = GROUND_STATUS_LABELS.get(
-            str(ground.get("status")), "Ожидает решения пользователя"
+            ground_status, "Ожидает решения пользователя"
         )
+        if ground_status == LegalGroundStatus.CONFIRMED.value:
+            status = "Выбрано"
+        elif ground_status == LegalGroundStatus.REJECTED.value:
+            status = "Не выбрано"
+        title = escape(str(ground.get("title") or "Без названия"))
         lines.extend(
             [
                 "",
-                f"{index}. {ground.get('title')}",
-                str(ground.get("description") or ""),
-                f"Юридические правила: {rules or 'не указаны'}.",
-                f"Источники: {sources or 'не указаны'}.",
+                (
+                    f"<b>{index}. {title}</b>"
+                    if ground_status == LegalGroundStatus.CONFIRMED.value
+                    else f"{index}. {title}"
+                ),
+                escape(str(ground.get("description") or "")),
+                f"Юридические правила: {escape(rules or 'не указаны')}.",
+                f"Источники: {escape(sources or 'не указаны')}.",
                 "Что нужно дополнительно: "
                 + (
-                    ", ".join(ground.get("missing_evidence", []))
+                    escape(", ".join(ground.get("missing_evidence", [])))
                     if ground.get("missing_evidence")
                     else "нет"
                 ),
-                f"Статус: {status}.",
+                f"<b>Статус: {status}.</b>",
             ]
         )
     return "\n".join(lines)
@@ -538,6 +550,7 @@ async def start_ai_analysis(
     await safe_answer(
         callback.message,
         _analysis_text(analysis),
+        parse_mode=ParseMode.HTML,
         reply_markup=_analysis_keyboard(case.id, analysis),
     )
 
@@ -577,6 +590,7 @@ async def confirm_ai_ground(
     await safe_answer(
         callback.message,
         _analysis_text(analysis),
+        parse_mode=ParseMode.HTML,
         reply_markup=_analysis_keyboard(case.id, analysis),
     )
 
