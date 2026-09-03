@@ -375,6 +375,25 @@ def _document_evidence_review_text(analysis: LegalAnalysis | None) -> str:
     return "\n".join(lines)
 
 
+def _documents_ready_keyboard(case_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Загрузить дополнительные материалы",
+                    callback_data=f"case:add-docs:{case_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Открыть дело",
+                    callback_data=f"case:{case_id}",
+                )
+            ],
+        ]
+    )
+
+
 def _unique_review_items(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -665,7 +684,7 @@ async def generate_ai_documents(
         "Жалоба и необходимые дополнительные документы отправлены выше."
         f"{_document_evidence_review_text(case.legal_analysis)}",
         parse_mode=ParseMode.HTML,
-        reply_markup=main_menu_keyboard(),
+        reply_markup=_documents_ready_keyboard(case.id),
     )
     for document in documents:
         if document.file_format in {GeneratedDocumentFormat.DOCX, GeneratedDocumentFormat.PDF}:

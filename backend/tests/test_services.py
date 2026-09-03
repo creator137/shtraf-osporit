@@ -16,6 +16,7 @@ import app.bot.handlers.documents as document_handlers
 from app.bot.handlers.legal import (
     _analysis_text,
     _document_evidence_review_text,
+    _documents_ready_keyboard,
     _result_text,
     answer_date_question,
 )
@@ -548,6 +549,19 @@ def test_document_evidence_review_text_is_readable_and_deduplicated() -> None:
     assert "<b>Что уже подтверждено</b>" in text
     assert text.count("Фото или видео участка") == 1
     assert "И ещё пунктов" not in text
+
+
+def test_documents_ready_keyboard_explains_next_actions() -> None:
+    keyboard = _documents_ready_keyboard(164)
+    labels = [
+        button.text
+        for row in keyboard.inline_keyboard
+        for button in row
+    ]
+
+    assert labels == ["Загрузить дополнительные материалы", "Открыть дело"]
+    assert keyboard.inline_keyboard[0][0].callback_data == "case:add-docs:164"
+    assert keyboard.inline_keyboard[1][0].callback_data == "case:164"
 
 
 FIRST_TEN_SCENARIO_CASES = (
