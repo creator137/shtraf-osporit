@@ -850,6 +850,22 @@ async def test_document_generation_uses_only_confirmed_grounds_and_writes_files(
     assert "Подпись: ____________________" in pdf_text
     assert "Расшифровка: ____________________" in docx_text
     assert "Расшифровка: ____________________" in pdf_text
+    for document in documents:
+        path = tmp_path / document.file_path
+        if document.original_filename.endswith(".docx"):
+            generated_text = "\n".join(
+                paragraph.text for paragraph in DocxDocument(path).paragraphs
+            )
+        else:
+            generated_pdf = pymupdf.open(path)
+            try:
+                generated_text = "\n".join(
+                    page.get_text() for page in generated_pdf
+                )
+            finally:
+                generated_pdf.close()
+        assert "Подпись: ____________________" in generated_text
+        assert "Расшифровка: ____________________" in generated_text
     assert all(
         '"complaint_recipient": "Тверской районный суд города Москвы"' in prompt
         for prompt in fake_client.document_prompts
