@@ -681,7 +681,7 @@ async def generate_ai_documents(
     await safe_answer(
         callback.message,
         "<b>Документы готовы</b>\n\n"
-        "Жалоба и необходимые дополнительные документы отправлены выше."
+        "Жалоба и необходимые дополнительные документы будут отправлены ниже."
         f"{_document_evidence_review_text(case.legal_analysis)}",
         parse_mode=ParseMode.HTML,
         reply_markup=_documents_ready_keyboard(case.id),
