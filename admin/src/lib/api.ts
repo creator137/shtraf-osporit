@@ -1,4 +1,6 @@
-export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000"
+export const API_URL =
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.PROD ? "/api" : "http://localhost:8000")
 
 export type CaseStatus = "DOCUMENT_UPLOADED" | "IN_PROGRESS" | "READY"
 export type RecognitionStatus =
