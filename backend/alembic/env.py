@@ -15,6 +15,7 @@ from app.db.models import (  # noqa: F401
     FineNotice,
     GeneratedDocument,
     LegalAnalysis,
+    PaymentIntent,
     User,
     UserConsent,
 )

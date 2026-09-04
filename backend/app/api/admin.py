@@ -29,6 +29,7 @@ from app.db.models import (
     UserConsent,
 )
 from app.db.session import async_session_factory
+from app.offers import OFFERS
 from app.services.case_service import CaseService
 from app.services.document_service import BACKEND_ROOT, remove_local_document_file
 from app.services.extraction_service import FineNoticeFields
@@ -42,6 +43,7 @@ from app.services.legal_rules import (
     serialize_rule,
 )
 from app.services.ocr_service import create_ocr_provider
+from app.services.payment_intent_service import PaymentIntentService
 from app.services.recognition_service import RecognitionService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -180,6 +182,33 @@ class GeneratedDocumentItem(BaseModel):
     created_at: datetime
 
 
+class PaymentOfferStatsItem(BaseModel):
+    offer_code: str
+    title: str
+    description: str
+    price: str
+    clicks: int
+    unique_users: int
+
+
+class PaymentIntentStatsItem(BaseModel):
+    total_clicks: int
+    unique_users: int
+    unique_cases: int
+    offers: list[PaymentOfferStatsItem]
+
+
+class PaymentIntentItem(BaseModel):
+    id: int
+    created_at: datetime
+    user_id: int
+    user: UserSummary
+    case_id: int | None
+    offer_code: str
+    offer_title: str
+    price: str
+
+
 class CaseDetail(BaseModel):
     id: int
     status: CaseStatus
@@ -269,6 +298,50 @@ async def list_users(
             consent_accepted_at=consent_at,
         )
         for user, case_count, consent_ver, consent_at in rows
+    ]
+
+
+@router.get("/payment-intents/stats", response_model=PaymentIntentStatsItem)
+async def payment_intent_stats(
+    session: AsyncSession = Depends(get_session),
+) -> PaymentIntentStatsItem:
+    stats = await PaymentIntentService(session).stats()
+    return PaymentIntentStatsItem(
+        total_clicks=stats.total_clicks,
+        unique_users=stats.unique_users,
+        unique_cases=stats.unique_cases,
+        offers=[
+            PaymentOfferStatsItem(
+                offer_code=item.offer_code,
+                title=OFFERS[item.offer_code].title,
+                description=OFFERS[item.offer_code].description,
+                price=OFFERS[item.offer_code].price,
+                clicks=item.clicks,
+                unique_users=item.unique_users,
+            )
+            for item in stats.offers
+        ],
+    )
+
+
+@router.get("/payment-intents", response_model=list[PaymentIntentItem])
+async def list_payment_intents(
+    session: AsyncSession = Depends(get_session),
+) -> list[PaymentIntentItem]:
+    intents = await PaymentIntentService(session).list_recent(limit=100)
+    return [
+        PaymentIntentItem(
+            id=intent.id,
+            created_at=intent.created_at,
+            user_id=intent.user_id,
+            user=user_summary(intent.user),
+            case_id=intent.case_id,
+            offer_code=intent.offer_code,
+            offer_title=OFFERS[intent.offer_code].title,
+            price=OFFERS[intent.offer_code].price,
+        )
+        for intent in intents
+        if intent.offer_code in OFFERS
     ]
 
 

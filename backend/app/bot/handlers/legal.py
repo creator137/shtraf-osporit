@@ -13,13 +13,14 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.states import LegalQuestionnaire
+from app.bot.handlers.payments import send_payment_offers
 from app.bot.keyboards.main import (
     CHECK_FINE_TEXT,
     HELP_TEXT,
     MY_CASES_TEXT,
     main_menu_keyboard,
 )
+from app.bot.states import LegalQuestionnaire
 from app.bot.utils import safe_answer, safe_callback_answer
 from app.db.models import (
     GeneratedDocumentFormat,
@@ -604,6 +605,7 @@ async def start_ai_analysis(
         parse_mode=ParseMode.HTML,
         reply_markup=_analysis_keyboard(case.id, analysis),
     )
+    await send_payment_offers(callback.message, case.id)
 
 
 @router.callback_query(F.data.startswith("ai:ground:"))

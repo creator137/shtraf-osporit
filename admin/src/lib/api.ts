@@ -130,6 +130,33 @@ export interface GeneratedDocumentItem {
   created_at: string
 }
 
+export interface PaymentOfferStats {
+  offer_code: string
+  title: string
+  description: string
+  price: string
+  clicks: number
+  unique_users: number
+}
+
+export interface PaymentIntentStats {
+  total_clicks: number
+  unique_users: number
+  unique_cases: number
+  offers: PaymentOfferStats[]
+}
+
+export interface PaymentIntentItem {
+  id: number
+  created_at: string
+  user_id: number
+  user: UserSummary
+  case_id: number | null
+  offer_code: string
+  offer_title: string
+  price: string
+}
+
 export interface LegalSourceItem {
   id: string
   title: string
@@ -203,6 +230,14 @@ export function getCase(caseId: number): Promise<CaseDetail> {
 
 export function getLegalRules(): Promise<LegalKnowledgeBase> {
   return request("/admin/legal-rules")
+}
+
+export function getPaymentIntentStats(): Promise<PaymentIntentStats> {
+  return request("/admin/payment-intents/stats")
+}
+
+export function getPaymentIntents(): Promise<PaymentIntentItem[]> {
+  return request("/admin/payment-intents")
 }
 
 export function getLegalSourceFileUrl(sourceId: string): string {

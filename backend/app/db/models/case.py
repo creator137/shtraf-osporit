@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.db.models.fine_notice import FineNotice
     from app.db.models.legal_assessment import LegalAssessment
     from app.db.models.legal_analysis import GeneratedDocument, LegalAnalysis
+    from app.db.models.payment_intent import PaymentIntent
     from app.db.models.user import User
 
 
@@ -71,4 +72,7 @@ class Case(Base):
         back_populates="case",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    payment_intents: Mapped[list["PaymentIntent"]] = relationship(
+        back_populates="case", passive_deletes=True
     )

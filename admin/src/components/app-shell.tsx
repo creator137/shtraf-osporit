@@ -22,9 +22,11 @@ function PageBreadcrumb() {
   const isCaseDetail = /^\/cases\/\d+$/.test(location.pathname)
   const pageName = location.pathname.startsWith("/cases")
     ? "Дела"
-    : location.pathname.startsWith("/legal-rules")
-      ? "Юридические правила"
-      : "Пользователи"
+    : location.pathname.startsWith("/payment-intents")
+      ? "Интерес к оплате"
+      : location.pathname.startsWith("/legal-rules")
+        ? "Юридические правила"
+        : "Пользователи"
 
   return (
     <Breadcrumb>

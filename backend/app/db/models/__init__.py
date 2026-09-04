@@ -12,6 +12,7 @@ from app.db.models.legal_analysis import (
     LegalGroundStatus,
 )
 from app.db.models.recognition import DocumentRecognition, RecognitionStatus
+from app.db.models.payment_intent import PaymentIntent
 from app.db.models.user import User
 
 __all__ = [
@@ -29,6 +30,7 @@ __all__ = [
     "LegalAnalysisStatus",
     "LegalGroundStatus",
     "RecognitionStatus",
+    "PaymentIntent",
     "User",
     "UserConsent",
 ]

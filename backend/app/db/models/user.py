@@ -9,6 +9,7 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.db.models.case import Case
     from app.db.models.consent import UserConsent
+    from app.db.models.payment_intent import PaymentIntent
 
 
 class User(Base):
@@ -33,5 +34,8 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
     consents: Mapped[list["UserConsent"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
+    payment_intents: Mapped[list["PaymentIntent"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )

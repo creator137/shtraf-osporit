@@ -7,7 +7,7 @@ import pytest
 from app.api.admin import get_session
 from app.api.main import app
 from app.config import get_settings
-from app.db.models import CaseStatus, Document, RecognitionStatus
+from app.db.models import CaseStatus, Document, PaymentIntent, RecognitionStatus
 from app.services.case_service import CaseService
 from app.services.consent_service import (
     PERSONAL_DATA_CONSENT_VERSION,
@@ -17,9 +17,10 @@ from app.services.document_service import DocumentService
 from app.services.legal_assessment_service import LegalAssessmentService
 from app.services.legal_rules import get_next_question
 from app.services.ocr_service import OcrResult
+from app.services.payment_intent_service import PaymentIntentService
 from app.services.user_service import UserService
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -74,6 +75,49 @@ async def test_list_users(api_client: AsyncClient, db_session: AsyncSession) -> 
     assert item["cases_count"] == 1
     assert item["consent_version"] == PERSONAL_DATA_CONSENT_VERSION
     assert item["consent_accepted_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_payment_intent_stats_and_list_api(
+    api_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await db_session.execute(delete(PaymentIntent))
+    first_user = await UserService(db_session).get_or_create(
+        200_000_030, "buyer_one", "Первый", "Интерес"
+    )
+    second_user = await UserService(db_session).get_or_create(
+        200_000_031, "buyer_two", "Второй", "Интерес"
+    )
+    case = await CaseService(db_session).create(first_user.id)
+    service = PaymentIntentService(db_session)
+    await service.create(
+        user_id=first_user.id, case_id=case.id, offer_code="complaint"
+    )
+    await service.create(
+        user_id=first_user.id, case_id=case.id, offer_code="complaint"
+    )
+    await service.create(user_id=second_user.id, offer_code="turnkey")
+
+    stats_response = await api_client.get("/admin/payment-intents/stats")
+    list_response = await api_client.get("/admin/payment-intents")
+
+    assert stats_response.status_code == 200
+    stats = stats_response.json()
+    assert stats["total_clicks"] == 3
+    assert stats["unique_users"] == 2
+    assert stats["unique_cases"] == 1
+    offers = {item["offer_code"]: item for item in stats["offers"]}
+    assert offers["complaint"]["clicks"] == 2
+    assert offers["complaint"]["unique_users"] == 1
+    assert offers["fine_check"]["clicks"] == 0
+
+    assert list_response.status_code == 200
+    events = list_response.json()
+    assert len(events) == 3
+    assert events[0]["offer_title"] == "Под ключ"
+    assert events[0]["price"] == "990–2 990 ₽"
+    assert events[0]["user"]["username"] == "buyer_two"
+    assert {event["case_id"] for event in events} == {case.id, None}
 
 
 @pytest.mark.asyncio
