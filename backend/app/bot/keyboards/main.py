@@ -1,11 +1,14 @@
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 
 CHECK_FINE_TEXT = "⚖️ Оспорить штраф"
 MY_CASES_TEXT = "📁 Мои дела"
 HELP_TEXT = "❓ Помощь"
-CONSENT_ACCEPT_TEXT = "✅ Согласен"
-CONSENT_DECLINE_TEXT = "❌ Не согласен"
 
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -18,11 +21,34 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def consent_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=CONSENT_ACCEPT_TEXT), KeyboardButton(text=CONSENT_DECLINE_TEXT)],
+def consent_keyboard(
+    *, viewed: bool = False, acknowledged: bool = False, signed: bool = False
+) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="📄 Ознакомиться с согласием", callback_data="consent:view")],
+        [
+            InlineKeyboardButton(
+                text=f"{'☑' if acknowledged else '☐'} Я ознакомлен(а)",
+                callback_data="consent:acknowledge",
+            )
         ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
+        [
+            InlineKeyboardButton(
+                text=f"{'☑' if signed else '☐'} Подписываю согласие",
+                callback_data="consent:sign",
+            )
+        ],
+    ]
+    if viewed and acknowledged and signed:
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить и продолжить",
+                    callback_data="consent:confirm",
+                )
+            ]
+        )
+    rows.append(
+        [InlineKeyboardButton(text="Отказаться", callback_data="consent:decline")]
     )
+    return InlineKeyboardMarkup(inline_keyboard=rows)

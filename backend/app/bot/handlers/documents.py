@@ -7,17 +7,14 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.keyboards.main import (
-    CONSENT_ACCEPT_TEXT,
-    CONSENT_DECLINE_TEXT,
-    consent_keyboard,
-    main_menu_keyboard,
-)
-from app.bot.states import DocumentUpload, LegalQuestionnaire
+from app.bot.handlers.consent import send_consent_request
 from app.bot.handlers.legal import begin_legal_assessment_for_case_message
+from app.bot.keyboards.main import main_menu_keyboard
+from app.bot.states import DocumentUpload, LegalQuestionnaire
+from app.bot.utils import safe_answer
 from app.config import get_settings
-from app.services.consent_service import ConsentService
 from app.services.case_service import CaseService
+from app.services.consent_service import ConsentService
 from app.services.document_service import (
     BACKEND_ROOT,
     DocumentService,
@@ -27,7 +24,6 @@ from app.services.document_service import (
 from app.services.ocr_service import create_ocr_provider
 from app.services.recognition_service import RecognitionService, RecognitionStatus
 from app.services.user_service import UserService
-from app.bot.utils import safe_answer
 
 
 router = Router(name="documents")
@@ -52,12 +48,7 @@ async def _save_document(
         return
 
     if not await ConsentService(session).has_current_consent(user.id):
-        await state.set_state(DocumentUpload.waiting_for_consent)
-        await safe_answer(
-            message,
-            "Перед загрузкой постановления нужно принять согласие.",
-            reply_markup=consent_keyboard(),
-        )
+        await send_consent_request(message, state)
         return
 
     settings = get_settings()
@@ -177,43 +168,9 @@ async def _handle_uploaded_notice(
     )
 
 
-@router.message(DocumentUpload.waiting_for_consent, F.text == CONSENT_ACCEPT_TEXT)
-async def accept_consent(
-    message: Message, state: FSMContext, session: AsyncSession
-) -> None:
-    if message.from_user is None:
-        return
-    telegram_user = message.from_user
-    user = await UserService(session).get_or_create(
-        telegram_id=telegram_user.id,
-        username=telegram_user.username,
-        first_name=telegram_user.first_name,
-        last_name=telegram_user.last_name,
-    )
-
-    await ConsentService(session).accept_current(user)
-    await state.set_data({})
-    await state.set_state(DocumentUpload.waiting_for_file)
-    await safe_answer(
-        message,
-        "Согласие сохранено. Теперь отправьте постановление о штрафе в формате PDF или изображения.",
-        reply_markup=main_menu_keyboard(),
-    )
-
-
-@router.message(DocumentUpload.waiting_for_consent, F.text == CONSENT_DECLINE_TEXT)
-async def decline_consent(message: Message, state: FSMContext) -> None:
-    await state.clear()
-    await safe_answer(
-        message,
-        "Без согласия загрузить постановление и создать дело нельзя.",
-        reply_markup=main_menu_keyboard(),
-    )
-
-
 @router.message(DocumentUpload.waiting_for_consent)
 async def unsupported_consent_answer(message: Message) -> None:
-    await safe_answer(message, "Выберите «Согласен» или «Не согласен» на клавиатуре.")
+    await safe_answer(message, "Используйте кнопки под сообщением о согласии.")
 
 
 @router.message(F.document)

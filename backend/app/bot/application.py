@@ -2,7 +2,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from app.bot.handlers import cases, documents, legal, payments, start
+from app.bot.handlers import cases, consent, documents, legal, payments, start
 from app.bot.middleware import DatabaseSessionMiddleware
 from app.config import Settings
 from app.db.session import async_session_factory
@@ -23,6 +23,7 @@ def create_dispatcher(settings: Settings) -> Dispatcher:
     dispatcher.include_routers(
         start.router,
         cases.router,
+        consent.router,
         documents.router,
         legal.router,
         payments.router,

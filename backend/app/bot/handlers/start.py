@@ -4,15 +4,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.handlers.consent import send_consent_request
 from app.bot.keyboards.main import (
     CHECK_FINE_TEXT,
     HELP_TEXT,
-    consent_keyboard,
     main_menu_keyboard,
 )
-from app.bot.utils import safe_answer
 from app.bot.states import DocumentUpload
-from app.services.consent_service import PERSONAL_DATA_CONSENT_TEXT, ConsentService
+from app.bot.utils import safe_answer
+from app.services.consent_service import ConsentService
 from app.services.user_service import UserService
 
 
@@ -66,12 +66,7 @@ async def start(message: Message, state: FSMContext, session: AsyncSession) -> N
         )
         return
 
-    await state.set_state(DocumentUpload.waiting_for_consent)
-    await safe_answer(
-        message,
-        PERSONAL_DATA_CONSENT_TEXT,
-        reply_markup=consent_keyboard(),
-    )
+    await send_consent_request(message, state)
 
 
 @router.message(F.text == HELP_TEXT)

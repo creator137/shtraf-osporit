@@ -8,21 +8,21 @@ from aiogram.types import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.states import DocumentUpload, LegalQuestionnaire
+from app.bot.handlers.consent import send_consent_request
+from app.bot.handlers.legal import legal_start_button
 from app.bot.keyboards.main import (
     CHECK_FINE_TEXT,
     MY_CASES_TEXT,
-    consent_keyboard,
     main_menu_keyboard,
 )
-from app.bot.handlers.legal import legal_start_button
+from app.bot.states import DocumentUpload, LegalQuestionnaire
 from app.bot.utils import safe_answer, safe_callback_answer
 from app.db.models import Case, CaseStatus
 from app.db.models.recognition import RecognitionStatus
 from app.services.case_service import CaseService
-from app.services.consent_service import ConsentService, PERSONAL_DATA_CONSENT_TEXT
-from app.services.user_service import UserService
+from app.services.consent_service import ConsentService
 from app.services.legal_rules import get_question
+from app.services.user_service import UserService
 
 
 router = Router(name="cases")
@@ -154,8 +154,7 @@ async def create_case(
         return
 
     if not await ConsentService(session).has_current_consent(user.id):
-        await state.set_state(DocumentUpload.waiting_for_consent)
-        await safe_answer(message, PERSONAL_DATA_CONSENT_TEXT, reply_markup=consent_keyboard())
+        await send_consent_request(message, state)
         return
 
     await state.set_state(DocumentUpload.waiting_for_file)
