@@ -22,7 +22,7 @@ OFFERS = {
         code="complaint",
         title="Жалоба",
         description="Подготовка жалобы ботом",
-        price="299–990 ₽",
+        price="99 ₽",
         icon="📄",
     ),
     "lawyer_support": Offer(

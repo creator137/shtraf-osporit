@@ -5,7 +5,7 @@ This file defines the currently paid/development scope.
 ## Included In Stage 5
 
 - Three fixed paid-service offers: a petition for 99 RUB, a complaint for
-  299–990 RUB, and lawyer support from 990 RUB.
+  99 RUB, and lawyer support from 990 RUB.
 - Telegram calls to action shown after the existing legal analysis.
 - A `PaymentIntent` event recorded for every payment-button click.
 - Total-click, unique-user, unique-case, and per-offer statistics.

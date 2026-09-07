@@ -100,7 +100,7 @@ def test_payment_offers_are_shown_with_price_ranges() -> None:
 
     assert "Бесплатная предварительная проверка завершена" in text
     assert "Ходатайство\nПодготовка ходатайства ботом\n99 ₽" in text
-    assert "Жалоба\nПодготовка жалобы ботом\n299–990 ₽" in text
+    assert "Жалоба\nПодготовка жалобы ботом\n99 ₽" in text
     assert "Сопровождение юристом\nКонсультация и сопровождение обжалования\nот 990 ₽" in text
     assert [row[0].callback_data for row in keyboard.inline_keyboard] == [
         "pay:intent:42:petition",
