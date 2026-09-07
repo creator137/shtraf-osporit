@@ -11,25 +11,25 @@ class Offer:
 
 
 OFFERS = {
-    "fine_check": Offer(
-        code="fine_check",
-        title="Проверка штрафа",
-        description="Анализ перспектив с помощью ИИ",
-        price="0–99 ₽",
-        icon="🔎",
+    "petition": Offer(
+        code="petition",
+        title="Ходатайство",
+        description="Подготовка ходатайства ботом",
+        price="99 ₽",
+        icon="📝",
     ),
     "complaint": Offer(
         code="complaint",
         title="Жалоба",
-        description="Готовый пакет документов",
+        description="Подготовка жалобы ботом",
         price="299–990 ₽",
         icon="📄",
     ),
-    "turnkey": Offer(
-        code="turnkey",
-        title="Под ключ",
-        description="Сопровождение обжалования",
-        price="990–2 990 ₽",
+    "lawyer_support": Offer(
+        code="lawyer_support",
+        title="Сопровождение юристом",
+        description="Консультация и сопровождение обжалования",
+        price="от 990 ₽",
         icon="⚖️",
     ),
 }

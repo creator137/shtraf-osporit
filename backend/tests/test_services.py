@@ -40,6 +40,7 @@ from app.db.models import (
 from app.db.session import async_session_factory
 from app.services.case_service import CaseService
 from app.services.consent_service import (
+    PERSONAL_DATA_CONSENT_TEXT,
     PERSONAL_DATA_CONSENT_VERSION,
     ConsentService,
 )
@@ -228,6 +229,15 @@ async def test_consent_accept_current_is_idempotent(db_session: AsyncSession) ->
     assert latest.telegram_id == user.telegram_id
     assert latest.version == PERSONAL_DATA_CONSENT_VERSION
     assert await service.has_current_consent(user.id) is True
+
+
+def test_consent_explains_optional_redaction_and_external_processing() -> None:
+    assert PERSONAL_DATA_CONSENT_VERSION == "pd-consent-v3"
+    assert "закройте или удалите" in PERSONAL_DATA_CONSENT_TEXT
+    assert "нажимаете «Согласен»" in PERSONAL_DATA_CONSENT_TEXT
+    assert "OCR.space" in PERSONAL_DATA_CONSENT_TEXT
+    assert "DeepSeek" in PERSONAL_DATA_CONSENT_TEXT
+    assert "/restart" in PERSONAL_DATA_CONSENT_TEXT
 
 
 @pytest.mark.asyncio

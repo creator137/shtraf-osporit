@@ -46,7 +46,7 @@ async def test_payment_intents_allow_repeated_clicks_and_calculate_stats(
         case_id=second_case.id,
         offer_code="complaint",
     )
-    await service.create(user_id=first_user.id, offer_code="fine_check")
+    await service.create(user_id=first_user.id, offer_code="petition")
 
     stats = await service.stats()
     by_offer = {item.offer_code: item for item in stats.offers}
@@ -59,8 +59,8 @@ async def test_payment_intents_allow_repeated_clicks_and_calculate_stats(
     assert stats.unique_cases == 2
     assert by_offer["complaint"].clicks == 3
     assert by_offer["complaint"].unique_users == 2
-    assert by_offer["fine_check"].clicks == 1
-    assert by_offer["turnkey"].clicks == 0
+    assert by_offer["petition"].clicks == 1
+    assert by_offer["lawyer_support"].clicks == 0
 
 
 @pytest.mark.asyncio
@@ -72,7 +72,7 @@ async def test_telegram_payment_click_is_saved_before_unavailable_alert(
     )
     case = await CaseService(db_session).create(user.id)
     callback = SimpleNamespace(
-        data=f"pay:intent:{case.id}:turnkey",
+        data=f"pay:intent:{case.id}:lawyer_support",
         from_user=SimpleNamespace(id=user.telegram_id),
         answer=AsyncMock(),
     )
@@ -87,9 +87,10 @@ async def test_telegram_payment_click_is_saved_before_unavailable_alert(
     )
     assert len(intents) == 2
     assert all(intent.case_id == case.id for intent in intents)
-    assert all(intent.offer_code == "turnkey" for intent in intents)
+    assert all(intent.offer_code == "lawyer_support" for intent in intents)
     assert callback.answer.await_count == 2
-    assert "находится в разработке" in callback.answer.await_args.args[0]
+    assert "переход в чат с юристом" in callback.answer.await_args.args[0]
+    assert "от 990 ₽" in callback.answer.await_args.args[0]
     assert callback.answer.await_args.kwargs["show_alert"] is True
 
 
@@ -97,11 +98,12 @@ def test_payment_offers_are_shown_with_price_ranges() -> None:
     text = payment_offers_text()
     keyboard = payment_offers_keyboard(case_id=42)
 
-    assert "Проверка штрафа\nАнализ перспектив с помощью ИИ\n0–99 ₽" in text
-    assert "Жалоба\nГотовый пакет документов\n299–990 ₽" in text
-    assert "Под ключ\nСопровождение обжалования\n990–2 990 ₽" in text
+    assert "Бесплатная предварительная проверка завершена" in text
+    assert "Ходатайство\nПодготовка ходатайства ботом\n99 ₽" in text
+    assert "Жалоба\nПодготовка жалобы ботом\n299–990 ₽" in text
+    assert "Сопровождение юристом\nКонсультация и сопровождение обжалования\nот 990 ₽" in text
     assert [row[0].callback_data for row in keyboard.inline_keyboard] == [
-        "pay:intent:42:fine_check",
+        "pay:intent:42:petition",
         "pay:intent:42:complaint",
-        "pay:intent:42:turnkey",
+        "pay:intent:42:lawyer_support",
     ]

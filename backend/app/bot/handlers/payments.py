@@ -13,7 +13,11 @@ router = Router(name="payments")
 
 
 def payment_offers_text() -> str:
-    lines = ["Выберите подходящий вариант:"]
+    lines = [
+        "Бесплатная предварительная проверка завершена.",
+        "",
+        "Выберите платную услугу:",
+    ]
     for offer in OFFERS.values():
         lines.extend(
             [
@@ -88,8 +92,15 @@ async def create_payment_intent(
         offer_code=offer_code,
     )
     await session.commit()
+    unavailable_message = (
+        "Консультация юриста стоит от 990 ₽. Оплата и переход в чат с юристом "
+        "находятся в разработке. Мы сообщим, когда они станут доступны."
+        if offer_code == "lawyer_support"
+        else "Способ оплаты находится в разработке. Мы сообщим, когда возможность "
+        "оплаты станет доступна."
+    )
     await safe_callback_answer(
         callback,
-        "Способ оплаты находится в разработке. Мы сообщим, когда возможность оплаты станет доступна.",
+        unavailable_message,
         show_alert=True,
     )

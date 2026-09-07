@@ -96,7 +96,7 @@ async def test_payment_intent_stats_and_list_api(
     await service.create(
         user_id=first_user.id, case_id=case.id, offer_code="complaint"
     )
-    await service.create(user_id=second_user.id, offer_code="turnkey")
+    await service.create(user_id=second_user.id, offer_code="lawyer_support")
 
     stats_response = await api_client.get("/admin/payment-intents/stats")
     list_response = await api_client.get("/admin/payment-intents")
@@ -109,13 +109,13 @@ async def test_payment_intent_stats_and_list_api(
     offers = {item["offer_code"]: item for item in stats["offers"]}
     assert offers["complaint"]["clicks"] == 2
     assert offers["complaint"]["unique_users"] == 1
-    assert offers["fine_check"]["clicks"] == 0
+    assert offers["petition"]["clicks"] == 0
 
     assert list_response.status_code == 200
     events = list_response.json()
     assert len(events) == 3
-    assert events[0]["offer_title"] == "Под ключ"
-    assert events[0]["price"] == "990–2 990 ₽"
+    assert events[0]["offer_title"] == "Сопровождение юристом"
+    assert events[0]["price"] == "от 990 ₽"
     assert events[0]["user"]["username"] == "buyer_two"
     assert {event["case_id"] for event in events} == {case.id, None}
 
